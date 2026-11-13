@@ -24,6 +24,13 @@ def _fail(exc: auth.OtpError):
     raise HTTPException(exc.status, str(exc), headers=headers)
 
 
+@router.get("/options")
+def login_options():
+    """Lets the login page show a test-mode banner when a fixed OTP is configured."""
+    fixed = get_settings().dev_fixed_otp
+    return {"test_mode": True, "test_code": fixed} if fixed else {"test_mode": False}
+
+
 @router.post("/otp/request", status_code=202)
 def request_code(body: OtpRequest, request: Request, db: Session = Depends(get_db)):
     try:

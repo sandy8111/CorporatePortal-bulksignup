@@ -4,12 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CorpOne Back Office</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
 <header>
-  <h1>CorpOne Back Office</h1><span class="sub">Inventory &amp; blacklist</span>
-  <a href="/">Sign-up portal</a>
+  <div class="logo"><span class="logo-mark">C1</span>CorpOne Business</div>
+  <span class="sub">Back office</span>
+  <div class="right"><a href="./">Sign-up portal</a></div>
 </header>
 <main>
   <section class="card">
@@ -78,7 +79,7 @@
     </form>
     <div class="msg hidden" id="msgKey"></div>
     <table id="keyTable" style="margin-top:14px"><thead><tr><th>Name</th><th>Key</th><th>Scopes</th><th>Limit/min</th><th>Last used</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
-    <div class="hint">Gateway API docs: <a href="/gateway/docs" target="_blank">/gateway/docs</a> · OpenAPI: <a href="/gateway/openapi.json" target="_blank">/gateway/openapi.json</a></div>
+    <div class="hint">Gateway API docs: <a href="gateway/docs" target="_blank">/gateway/docs</a> · OpenAPI: <a href="gateway/openapi.json" target="_blank">/gateway/openapi.json</a></div>
   </section>
 
   <section class="card">
@@ -92,6 +93,6 @@
     <table id="auditTable"><thead><tr><th>Time</th><th>Client</th><th>Request</th><th>Status</th><th>ms</th><th>IP</th></tr></thead><tbody></tbody></table>
   </section>
 </main>
-<script src="/static/admin.js"></script>
+<script src="static/admin.js"></script>
 </body>
 </html>

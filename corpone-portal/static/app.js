@@ -1,6 +1,8 @@
 "use strict";
+// All URLs are relative so the portal works behind a path prefix (e.g. /ports/8077/).
 const $ = (s, el = document) => el.querySelector(s);
-const state = { signup: null, plan: null, email: null, otpEmail: null };
+const TOTAL_STEPS = 6;
+const state = { signup: null, plan: null, email: null, otpEmail: null, step: 1, maxStep: 1, submitted: false };
 
 async function api(method, path, body) {
   const opts = { method, headers: {} };
@@ -8,7 +10,7 @@ async function api(method, path, body) {
   else if (body !== undefined) { opts.body = JSON.stringify(body); opts.headers["Content-Type"] = "application/json"; }
   const res = await fetch(path, opts);
   const data = res.status === 204 ? null : await res.json().catch(() => ({}));
-  if (res.status === 401 && !path.startsWith("/api/auth/")) { showLogin(); throw new Error("Please sign in again"); }
+  if (res.status === 401 && !path.startsWith("api/auth/")) { signedOut(); throw new Error("Please sign in again"); }
   if (!res.ok) throw new Error(errText(data));
   return data;
 }
@@ -21,270 +23,332 @@ function errText(data) {
 
 function msg(id, text, kind = "err") {
   const el = $("#" + id);
-  el.textContent = text; el.className = `msg ${kind}`;
+  el.textContent = text || ""; el.className = `msg ${kind}`;
   if (!text) el.classList.add("hidden");
 }
 
 function td(text) { const c = document.createElement("td"); c.textContent = text ?? ""; return c; }
 function row(cells) { const r = document.createElement("tr"); cells.forEach(c => r.append(c instanceof Node ? c : td(c))); return r; }
-
-function go(step) {
-  document.querySelectorAll("section.step").forEach(s => s.classList.toggle("hidden", s.dataset.step != step));
-  document.querySelectorAll("#steps li").forEach(li => {
-    li.classList.toggle("active", li.dataset.step == step);
-    li.classList.toggle("done", li.dataset.step < step);
-  });
-  if (step === 3) loadStep3();
-  if (step === 4) renderReview();
-  window.scrollTo(0, 0);
+function dl(el, pairs) {
+  el.replaceChildren(...pairs.flatMap(([k, v]) => {
+    const dt = document.createElement("dt"), dd = document.createElement("dd");
+    dt.textContent = k; dd.textContent = v ?? "–"; return [dt, dd];
+  }));
 }
-document.querySelectorAll("[data-back]").forEach(b => b.onclick = () => go(+b.dataset.back));
+const money = v => `$${Number(v).toFixed(2)}`;
 
-// ---- Login (email OTP)
-function showLogin() {
-  $("#wizard").classList.add("hidden"); $("#whoami").classList.add("hidden");
-  $("#login").classList.remove("hidden");
+// ---------------------------------------------------------------- sequence navigation
+function go(step) {
+  state.step = step;
+  state.maxStep = Math.max(state.maxStep, step);
+  document.querySelectorAll("section.step").forEach(s => s.classList.toggle("hidden", +s.dataset.step !== step));
+  document.querySelectorAll("#steps li").forEach(li => {
+    const n = +li.dataset.step;
+    li.className = n < step || (state.submitted && n <= 6 && n !== step) ? "done" : n === step ? "active" : "upcoming";
+    // Completed steps 2-5 are clickable until the order is submitted.
+    const canJump = !state.submitted && n >= 2 && n < step;
+    li.classList.toggle("clickable", canJump);
+    li.onclick = canJump ? () => go(n) : null;
+  });
+  const pct = state.submitted ? 100 : ((step - 1) / (TOTAL_STEPS - 1)) * 100;
+  $("#progressBar").style.width = `${pct}%`;
+  $("#progressLabel").textContent = state.submitted ? "Order submitted" : `Step ${step} of ${TOTAL_STEPS}`;
+  if (step === 4) loadStep4();
+  if (step === 5) renderReview();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-back]");
+  if (b && !state.submitted) { e.preventDefault(); go(+b.dataset.back); }
+});
+
+// ---------------------------------------------------------------- step 1: sign in (email OTP)
+function signedOut() {
+  state.email = null;
+  $("#whoami").classList.add("hidden"); $("#logout").classList.add("hidden"); $("#boLink").classList.remove("hidden");
+  state.maxStep = 1; go(1);
 }
 
 async function requestCode(email) {
-  await api("POST", "/api/auth/otp/request", { email });
+  await api("POST", "api/auth/otp/request", { email });
   state.otpEmail = email;
   $("#otpEmail").textContent = email;
   $("#otpRequestForm").classList.add("hidden");
   $("#otpVerifyForm").classList.remove("hidden");
   $("#otpVerifyForm").elements.code.focus();
-  msg("msgLogin", "Code sent. It expires in 5 minutes.", "ok");
+  msg("msg1", "Code sent. Check your inbox.", "ok");
 }
 
 $("#otpRequestForm").onsubmit = async e => {
   e.preventDefault();
-  try { await requestCode(e.target.elements.email.value.trim()); } catch (err) { msg("msgLogin", err.message); }
+  try { await requestCode(e.target.elements.email.value.trim()); } catch (err) { msg("msg1", err.message); }
 };
-$("#otpResend").onclick = async () => {
-  try { await requestCode(state.otpEmail); } catch (err) { msg("msgLogin", err.message); }
+$("#otpResend").onclick = async () => { try { await requestCode(state.otpEmail); } catch (err) { msg("msg1", err.message); } };
+$("#otpBack").onclick = () => {
+  $("#otpVerifyForm").classList.add("hidden"); $("#otpRequestForm").classList.remove("hidden"); msg("msg1", "");
 };
 $("#otpVerifyForm").onsubmit = async e => {
   e.preventDefault();
   try {
-    await api("POST", "/api/auth/otp/verify", { email: state.otpEmail, code: e.target.elements.code.value });
-    msg("msgLogin", "");
-    e.target.reset();
-    await enterApp();
-  } catch (err) { msg("msgLogin", err.message); }
+    await api("POST", "api/auth/otp/verify", { email: state.otpEmail, code: e.target.elements.code.value });
+    msg("msg1", ""); e.target.reset();
+    $("#otpVerifyForm").classList.add("hidden"); $("#otpRequestForm").classList.remove("hidden");
+    await signedIn();
+  } catch (err) { msg("msg1", err.message); }
 };
 $("#logout").onclick = async e => {
   e.preventDefault();
-  await api("POST", "/api/auth/logout").catch(() => {});
+  await api("POST", "api/auth/logout").catch(() => {});
   sessionStorage.removeItem("signupId");
-  location.href = "/";
+  location.reload();
 };
 
-async function enterApp() {
-  const me = await api("GET", "/api/auth/me");
+async function signedIn() {
+  const me = await api("GET", "api/auth/me");
   state.email = me.email;
   $("#whoEmail").textContent = me.email;
-  $("#whoami").classList.remove("hidden");
-  $("#boLink").classList.add("hidden");
-  $("#login").classList.add("hidden");
-  $("#wizard").classList.remove("hidden");
+  $("#whoInitial").textContent = me.email[0].toUpperCase();
+  $("#whoami").classList.remove("hidden"); $("#logout").classList.remove("hidden"); $("#boLink").classList.add("hidden");
   $("#aoForm").elements.email.value = me.email;
   await resume();
 }
 
-// ---- Step 1: company + contract
+// ---------------------------------------------------------------- step 2: company + contract
+function lockCompanyForm(s) {
+  const f = $("#companyForm");
+  for (const k of ["uen", "company_name", "category", "company_address"]) f.elements[k].value = s[k] || "";
+  f.querySelectorAll("input,textarea,button").forEach(i => i.disabled = true);
+  $("#subCompany").classList.add("complete");
+  $("#contractForm").querySelectorAll("input,button").forEach(i => i.disabled = false);
+}
+
 $("#companyForm").onsubmit = async e => {
   e.preventDefault();
-  const f = Object.fromEntries(new FormData(e.target));
   try {
-    state.signup = await api("POST", "/api/signups", f);
+    state.signup = await api("POST", "api/signups", Object.fromEntries(new FormData(e.target)));
     sessionStorage.setItem("signupId", state.signup.id);
-    msg("msg1", `UEN ${state.signup.uen} is valid. Please upload the signed contract agreement.`, "ok");
-    e.target.querySelectorAll("input,textarea,button").forEach(i => i.disabled = true);
-    $("#contractBox").classList.remove("hidden");
-  } catch (err) { msg("msg1", err.message); }
+    lockCompanyForm(state.signup);
+    msg("msg2", `UEN ${state.signup.uen} is valid and not blacklisted. Now upload the signed contract.`, "ok");
+  } catch (err) { msg("msg2", err.message); }
 };
 
 $("#contractForm").onsubmit = async e => {
   e.preventDefault();
   try {
-    const r = await api("POST", `/api/signups/${state.signup.id}/contract`, new FormData(e.target));
-    msg("msg1", `Contract "${r.contract_filename}" uploaded securely.`, "ok");
-    $("#toStep2").disabled = false;
-  } catch (err) { msg("msg1", err.message); }
+    const r = await api("POST", `api/signups/${state.signup.id}/contract`, new FormData(e.target));
+    state.signup.contract_uploaded = true;
+    state.signup.contract_filename = r.contract_filename;
+    $("#subContract").classList.add("complete");
+    msg("msg2", `Contract "${r.contract_filename}" uploaded securely.${r.ai_review ? " An AI check of the contract is running in the background." : ""}`, "ok");
+    $("#toStep3").disabled = false;
+  } catch (err) { msg("msg2", err.message); }
 };
-$("#toStep2").onclick = () => go(2);
+$("#toStep3").onclick = () => go(3);
 
-// ---- Step 2: account officer
+// ---------------------------------------------------------------- step 3: account officer
 $("#aoForm").onsubmit = async e => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
   delete f.email;  // server uses the verified login email
   try {
-    state.signup = await api("PUT", `/api/signups/${state.signup.id}/account-officer`, f);
-    msg("msg2", "");
-    go(3);
-  } catch (err) { msg("msg2", err.message); }
+    state.signup = await api("PUT", `api/signups/${state.signup.id}/account-officer`, f);
+    msg("msg3", "");
+    go(4);
+  } catch (err) { msg("msg3", err.message); }
 };
 
-// ---- Step 3: plans, SIM upload, cart
-async function loadStep3() {
+// ---------------------------------------------------------------- step 4: plan, SIM upload, cart
+async function loadStep4() {
   if (!$("#plans").children.length) {
-    const plans = await api("GET", "/api/plans");
+    const plans = await api("GET", "api/plans");
     for (const p of plans) {
       const card = document.createElement("div");
       card.className = "plan";
-      card.innerHTML = `<div class="name"></div><div class="price"></div><div class="desc"></div>`;
-      $(".name", card).textContent = p.name;
-      $(".price", card).textContent = `$${Number(p.monthly_price).toFixed(0)}/mth`;
+      card.innerHTML = `<div class="name"></div><div class="price"></div><div class="data"></div><div class="desc"></div>`;
+      $(".name", card).textContent = p.name.replace(/^\$\d+\s*/, "");
+      $(".price", card).innerHTML = `$${Number(p.monthly_price).toFixed(0)}<small>/month per line</small>`;
+      $(".data", card).textContent = `${p.data_gb} GB data`;
       $(".desc", card).textContent = p.description;
       card.onclick = () => {
         state.plan = p.code;
         document.querySelectorAll(".plan").forEach(c => c.classList.toggle("selected", c === card));
+        $("#subPlan").classList.add("complete");
+        msg("msg4", "");
       };
       $("#plans").append(card);
     }
   }
   refreshAvailability();
-  renderMiniCart();
+  renderCartBar();
 }
 
 async function refreshAvailability() {
-  const a = await api("GET", `/api/signups/${state.signup.id}/availability`);
-  msg("avail", `Category ${a.category}: ${a.ESIM} eSIM and ${a.PHYSICAL} physical SIM lines are paired and ready to allocate.`, "info");
+  const a = await api("GET", `api/signups/${state.signup.id}/availability`);
+  $("#availEsim").textContent = a.ESIM; $("#availPhys").textContent = a.PHYSICAL; $("#availCat").textContent = a.category;
 }
 
 $("#simForm").onsubmit = async e => {
   e.preventDefault();
   try {
-    const r = await api("POST", `/api/signups/${state.signup.id}/sims`, new FormData(e.target));
+    const r = await api("POST", `api/signups/${state.signup.id}/sims`, new FormData(e.target));
     let t = `${r.accepted} SIM(s) accepted, ${r.paired} newly paired with numbers.`;
     if (r.rejected_count) t += `\n${r.rejected_count} rejected:\n` + r.rejected.slice(0, 20).map(x => `  row ${x.row} (${x.value}): ${x.error}`).join("\n");
     msg("msgSim", t, r.rejected_count ? "err" : "ok");
-    e.target.reset();
+    if (r.accepted) $("#subSim").classList.add("complete");
+    e.target.elements.file.value = "";
     refreshAvailability();
   } catch (err) { msg("msgSim", err.message); }
 };
 
 $("#cartForm").onsubmit = async e => {
   e.preventDefault();
-  if (!state.plan) return msg("msg3", "Please select a plan first.");
+  if (!state.plan) return msg("msg4", "Select a plan above first.");
   const f = Object.fromEntries(new FormData(e.target));
   try {
-    state.signup.cart = await api("POST", `/api/signups/${state.signup.id}/cart`,
+    state.signup.cart = await api("POST", `api/signups/${state.signup.id}/cart`,
       { plan_code: state.plan, sim_type: f.sim_type, quantity: +f.quantity });
-    msg("msg3", "Lines paired and added to cart.", "ok");
+    msg("msg4", `${f.quantity} ${f.sim_type === "ESIM" ? "eSIM" : "physical SIM"} line(s) paired and added to your cart.`, "ok");
     refreshAvailability();
-    renderMiniCart();
-  } catch (err) { msg("msg3", err.message); }
+    renderCartBar();
+  } catch (err) { msg("msg4", err.message); }
 };
 
-function renderMiniCart() {
+function renderCartBar() {
   const c = state.signup.cart;
-  $("#miniCart").textContent = c.line_count ? `Cart: ${c.line_count} line(s), $${c.monthly_total}/month` : "Cart is empty.";
-  $("#toStep4").disabled = !c.line_count;
+  $("#cartCount").textContent = `${c.line_count} line${c.line_count === 1 ? "" : "s"}`;
+  $("#cartTotal").textContent = money(c.monthly_total);
+  $("#toStep5").disabled = !c.line_count;
+  $("#subCart").classList.toggle("complete", c.line_count > 0);
 }
-$("#toStep4").onclick = () => go(4);
+$("#toStep5").onclick = () => go(5);
 
-// ---- Step 4: review
+// ---------------------------------------------------------------- step 5: review
 function renderReview() {
   const s = state.signup, c = s.cart, ao = s.account_officer;
-  const info = [["Company", `${s.company_name} (UEN ${s.uen})`], ["Address", s.company_address || "-"],
-    ["Contract", s.contract_filename], ["Account officer", `${ao.full_name} (${ao.id_type} ${ao.id_number_masked})`],
-    ["AO email / mobile", `${ao.email} / ${ao.mobile}`], ["Merchant code", s.merchant_code], ["Category", s.category]];
-  $("#reviewInfo").replaceChildren(...info.flatMap(([k, v]) => {
-    const dt = document.createElement("dt"), dd = document.createElement("dd");
-    dt.textContent = k; dd.textContent = v; dd.style.margin = 0; return [dt, dd];
-  }));
+  dl($("#reviewCompany"), [["Name", s.company_name], ["UEN", s.uen], ["Address", s.company_address || "–"],
+    ["Category", s.category], ["Contract", s.contract_filename]]);
+  dl($("#reviewAo"), [["Name", ao.full_name], ["ID", `${ao.id_type} ${ao.id_number_masked}`], ["Email", ao.email],
+    ["Mobile", ao.mobile], ["Merchant code", s.merchant_code]]);
   renderAiReview(s.contract_ai_review);
-  $("#summaryTable tbody").replaceChildren(...c.summary.map(p => row([p.plan_name, `$${p.unit_price}`, p.ESIM, p.PHYSICAL, `$${p.subtotal}`])));
-  $("#total").textContent = `${c.line_count} lines · Total $${c.monthly_total} / month`;
+  $("#summaryTable tbody").replaceChildren(...c.summary.map(p => row([p.plan_name, money(p.unit_price), p.ESIM, p.PHYSICAL, money(p.subtotal)])));
+  $("#total").textContent = `${c.line_count} lines · ${money(c.monthly_total)} / month`;
   $("#linesTable tbody").replaceChildren(...c.lines.map((l, i) => {
     const b = document.createElement("button");
     b.className = "link"; b.textContent = "Remove";
     b.onclick = async () => {
-      state.signup.cart = await api("DELETE", `/api/signups/${s.id}/cart/${l.id}`);
-      state.signup.cart.line_count ? renderReview() : go(3);
+      state.signup.cart = await api("DELETE", `api/signups/${s.id}/cart/${l.id}`);
+      state.signup.cart.line_count ? renderReview() : go(4);
     };
     const cell = document.createElement("td"); cell.append(b);
-    return row([i + 1, l.msisdn, l.iccid, l.sim_type === "ESIM" ? "eSIM" : "Physical", l.plan_name, `$${l.monthly_price}`, cell]);
+    return row([i + 1, l.msisdn, l.iccid, l.sim_type === "ESIM" ? "eSIM" : "Physical", l.plan_name, money(l.monthly_price), cell]);
   }));
   $("#confirm").checked = false;
   $("#submitOrder").disabled = true;
 }
+$("#confirm").onchange = e => $("#submitOrder").disabled = !e.target.checked;
+
 function renderAiReview(r) {
   const box = $("#aiReview");
   if (!r || r.status === "disabled") return box.classList.add("hidden");
   box.classList.remove("hidden");
-  box.replaceChildren();
-  const head = document.createElement("div");
+  const m = document.createElement("div");
   if (r.status === "pending") {
-    head.className = "msg info"; head.textContent = "AI contract check in progress…";
-    box.append(head);
+    m.className = "msg info"; m.textContent = "AI contract check in progress…";
     setTimeout(async () => {
-      const s = await api("GET", `/api/signups/${state.signup.id}`);
+      const s = await api("GET", `api/signups/${state.signup.id}`);
       state.signup.contract_ai_review = s.contract_ai_review;
-      if ($("section.step[data-step='4']:not(.hidden)")) renderAiReview(s.contract_ai_review);
+      if (state.step === 5) renderAiReview(s.contract_ai_review);
     }, 3000);
-    return;
+  } else if (r.status === "unavailable") {
+    m.className = "msg info"; m.textContent = "AI contract check unavailable. The contract will be reviewed manually.";
+  } else {
+    m.className = `msg ${r.status === "ok" ? "ok" : "err"}`;
+    m.textContent = r.status === "ok"
+      ? "AI contract check: the company name and UEN match the contract."
+      : "AI contract check found items to review (advisory; you can still submit):\n• " + r.flags.join("\n• ");
   }
-  if (r.status === "unavailable") {
-    head.className = "msg info"; head.textContent = "AI contract check unavailable; the contract will be reviewed manually.";
-    return box.append(head);
-  }
-  head.className = `msg ${r.status === "ok" ? "ok" : "err"}`;
-  head.textContent = r.status === "ok"
-    ? "AI contract check: company name and UEN match the contract."
-    : "AI contract check found items to review (advisory; you can still submit):\n• " + r.flags.join("\n• ");
-  box.append(head);
+  box.replaceChildren(m);
 }
-
-$("#confirm").onchange = e => $("#submitOrder").disabled = !e.target.checked;
 
 $("#submitOrder").onclick = async () => {
   $("#submitOrder").disabled = true;
   try {
-    const r = await api("POST", `/api/signups/${state.signup.id}/submit`);
+    const r = await api("POST", `api/signups/${state.signup.id}/submit`);
     sessionStorage.removeItem("signupId");
-    go(5);
+    state.submitted = true;
+    go(6);
     pollStatus(r.account_number);
-  } catch (err) { msg("msg4", err.message); $("#submitOrder").disabled = false; }
+  } catch (err) { msg("msg5", err.message); $("#submitOrder").disabled = false; }
 };
 
-// ---- Step 5: provisioning status
-async function pollStatus(accountNumber) {
-  const a = await api("GET", `/api/accounts/${accountNumber}`);
-  const info = [["Account number", a.account_number], ["Company", `${a.company.name} (${a.company.uen})`],
-    ["Account officer", `${a.account_officer.name} <${a.account_officer.email}>`],
-    ["Billing account", a.billing_account_ref || "pending"], ["Order status", a.order_status]];
-  $("#statusInfo").replaceChildren(...info.flatMap(([k, v]) => {
-    const dt = document.createElement("dt"), dd = document.createElement("dd");
-    dt.textContent = k; dd.textContent = v; dd.style.margin = 0; return [dt, dd];
+// ---------------------------------------------------------------- step 6: provisioning sequence
+function timeline(a) {
+  const lines = a.lines, n = lines.length;
+  const prov = lines.filter(l => l.status === "PROVISIONED").length;
+  const failed = lines.filter(l => l.status === "FAILED").length;
+  const esim = lines.filter(l => l.sim_type === "ESIM");
+  const qr = esim.filter(l => l.esim_qr_sent).length;
+  const running = a.order_status === "SUBMITTED";
+  const items = [
+    ["ok", "Order submitted", `${n} line(s) for ${a.company.name}`],
+    ["ok", "Company profile & account officer created", `${a.company.uen} · ${a.account_officer.name}`],
+    [a.billing_account_ref ? "ok" : running ? "run" : "bad", "Billing account created", a.billing_account_ref || (running ? "In progress…" : "Failed")],
+    [prov === n ? "ok" : running ? "run" : failed ? "bad" : "run", "Lines activated on network & billing",
+      `${prov} of ${n} provisioned${failed ? ` · ${failed} failed (our team will retry)` : ""}`],
+  ];
+  if (esim.length) items.push([qr === esim.length ? "ok" : running ? "run" : "bad", "eSIM QR codes emailed",
+    `${qr} of ${esim.length} sent to ${a.account_officer.email}`]);
+  items.push([a.order_status === "COMPLETED" ? "ok" : running ? "" : "bad", "Ready to use",
+    a.order_status === "COMPLETED" ? "All lines are live" : running ? "Waiting for the steps above" : "Some lines need attention"]);
+  $("#timeline").replaceChildren(...items.map(([cls, t, d], i) => {
+    const li = document.createElement("li");
+    li.className = cls;
+    li.innerHTML = `<span class="ic"></span><div class="tt"></div><div class="td"></div>`;
+    $(".ic", li).textContent = cls === "ok" ? "✓" : cls === "bad" ? "!" : i + 1;
+    $(".tt", li).textContent = t; $(".td", li).textContent = d;
+    return li;
   }));
+}
+
+async function pollStatus(accountNumber) {
+  const a = await api("GET", `api/accounts/${accountNumber}`);
+  timeline(a);
+  dl($("#statusInfo"), [["Account number", a.account_number], ["Company", `${a.company.name} (${a.company.uen})`],
+    ["Account officer", a.account_officer.email], ["Billing account", a.billing_account_ref || "pending"],
+    ["Order status", a.order_status.replace("_", " ").toLowerCase()]]);
+  $("#statusLead").textContent = a.order_status === "COMPLETED" ? "All done. Your lines are active."
+    : a.order_status === "SUBMITTED" ? "We're setting up your lines. This page updates automatically."
+    : "Some lines could not be activated yet. Our team has been notified and will retry.";
   $("#statusTable tbody").replaceChildren(...a.lines.map(l => {
     const st = document.createElement("td"), pill = document.createElement("span");
     pill.className = `pill ${l.status}`; pill.textContent = l.status; if (l.error) pill.title = l.error;
     st.append(pill);
     return row([l.msisdn, l.iccid, l.sim_type === "ESIM" ? "eSIM" : "Physical", l.plan, st,
-      l.sim_type === "ESIM" ? (l.esim_qr_sent ? "Emailed to AO" : "Pending") : "-"]);
+      l.sim_type === "ESIM" ? (l.esim_qr_sent ? "Emailed" : "Pending") : "–"]);
   }));
   if (a.order_status === "SUBMITTED") setTimeout(() => pollStatus(accountNumber), 2000);
 }
+$("#newSignup").onclick = () => location.reload();
 
-// ---- Resume an unfinished draft after page reload
+// ---------------------------------------------------------------- resume a draft after reload
 async function resume() {
   const id = sessionStorage.getItem("signupId");
-  if (!id) return go(1);
+  if (!id) return go(2);
   try {
-    state.signup = await api("GET", `/api/signups/${id}`);
+    state.signup = await api("GET", `api/signups/${id}`);
     if (state.signup.status !== "DRAFT") throw new Error();
-    if (!state.signup.contract_uploaded) {
-      go(1);
-      const f = $("#companyForm");
-      for (const k of ["uen", "company_name", "category", "company_address"]) f.elements[k].value = state.signup[k] || "";
-      f.querySelectorAll("input,textarea,button").forEach(i => i.disabled = true);
-      $("#contractBox").classList.remove("hidden");
-    } else go(state.signup.account_officer ? 3 : 2);
-  } catch { sessionStorage.removeItem("signupId"); go(1); }
+    lockCompanyForm(state.signup);
+    if (!state.signup.contract_uploaded) return go(2);
+    $("#subContract").classList.add("complete"); $("#toStep3").disabled = false;
+    state.maxStep = 3;
+    if (!state.signup.account_officer) return go(3);
+    go(4);
+  } catch { sessionStorage.removeItem("signupId"); go(2); }
 }
 
-enterApp().catch(showLogin);
+api("GET", "api/auth/options").then(o => {
+  if (!o.test_mode) return;
+  $("#testCode").textContent = o.test_code;
+  $("#testMode").classList.remove("hidden");
+}).catch(() => {});
+signedIn().catch(() => go(1));

@@ -193,3 +193,12 @@ def test_provisioning_failure_and_retry(client, monkeypatch):
 
 def test_admin_requires_token(client):
     assert client.get("/api/admin/blacklist").status_code == 401
+
+
+def test_served_with_and_without_port_proxy_prefix(client):
+    for prefix in ("", "/ports/8077"):
+        r = client.get(prefix + "/")
+        assert r.status_code == 200 and 'src="static/app.js"' in r.text
+        assert client.get(prefix + "/static/app.js").status_code == 200
+        assert client.get(prefix + "/api/plans").status_code == 200
+        assert client.get(prefix + "/admin").status_code == 200

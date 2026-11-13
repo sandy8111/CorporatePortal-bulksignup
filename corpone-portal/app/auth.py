@@ -44,6 +44,9 @@ def _token_hash(token: str) -> str:
 
 
 def _generate_code() -> str:
+    fixed = get_settings().dev_fixed_otp
+    if fixed:  # testing only, see Settings.dev_fixed_otp
+        return fixed
     return f"{secrets.randbelow(10**6):06d}"
 
 

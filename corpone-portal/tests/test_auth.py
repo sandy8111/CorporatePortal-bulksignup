@@ -76,3 +76,14 @@ def test_ao_email_must_match_login(client):
     assert client.put(f"/api/signups/{sid}/account-officer", json={**ao, "email": "other@x.sg"}).status_code == 400
     r = client.put(f"/api/signups/{sid}/account-officer", json=ao)
     assert r.status_code == 200 and r.json()["account_officer"]["email"] == AO_EMAIL
+
+
+def test_fixed_test_otp(anon, monkeypatch):
+    from app.config import get_settings
+    assert anon.get("/api/auth/options").json() == {"test_mode": False}
+    monkeypatch.setattr(get_settings(), "dev_fixed_otp", "123456")
+    assert anon.get("/api/auth/options").json() == {"test_mode": True, "test_code": "123456"}
+    anon.post("/api/auth/otp/request", json={"email": "tester@acme.sg"})
+    assert anon.post("/api/auth/otp/verify", json={"email": "tester@acme.sg", "code": "654321"}).status_code == 401
+    r = anon.post("/api/auth/otp/verify", json={"email": "tester@acme.sg", "code": "123456"})
+    assert r.status_code == 200 and anon.get("/api/auth/me").json()["email"] == "tester@acme.sg"

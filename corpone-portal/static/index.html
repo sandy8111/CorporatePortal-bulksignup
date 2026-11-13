@@ -3,132 +3,185 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CorpOne Corporate Sign-up</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <title>CorpOne Business · Corporate sign-up</title>
+  <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
 <header>
-  <h1>CorpOne Business</h1><span class="sub">Corporate bulk-line sign-up</span>
-  <span id="whoami" class="hidden" style="margin-left:auto;font-size:14px"><span id="whoEmail"></span> · <a href="#" id="logout" style="margin:0">Sign out</a></span>
-  <a href="/admin" id="boLink">Back office</a>
-</header>
-<main>
-  <!-- Login: email one-time code -->
-  <section class="card hidden" id="login" style="max-width:460px;margin:40px auto">
-    <h2>Account officer sign in</h2>
-    <p class="hint" style="margin-top:0">We'll email you a 6-digit code. Use your work email: eSIM QR codes and order updates are sent there.</p>
-    <form id="otpRequestForm">
-      <label>Work email</label><input name="email" type="email" required autocomplete="email">
-      <div class="actions"><button type="submit">Email me a code</button></div>
-    </form>
-    <form id="otpVerifyForm" class="hidden">
-      <label>6-digit code sent to <b id="otpEmail"></b></label>
-      <input name="code" inputmode="numeric" pattern="\d{6}" maxlength="6" required autocomplete="one-time-code" style="font-size:22px;letter-spacing:6px">
-      <div class="actions"><button type="button" class="secondary" id="otpResend">Resend code</button><button type="submit">Sign in</button></div>
-    </form>
-    <div class="msg hidden" id="msgLogin"></div>
-  </section>
-
-  <div id="wizard" class="hidden">
-  <ol class="steps" id="steps">
-    <li data-step="1">1. Company</li>
-    <li data-step="2">2. Account officer</li>
-    <li data-step="3">3. Plan &amp; lines</li>
-    <li data-step="4">4. Review cart</li>
-    <li data-step="5">5. Status</li>
-  </ol>
-
-  <!-- Step 1: Company -->
-  <section class="card step" data-step="1">
-    <h2>Company information</h2>
-    <form id="companyForm">
-      <div class="grid">
-        <div><label>UEN (Singapore BRN)</label><input name="uen" required placeholder="e.g. 201912345K" maxlength="12"></div>
-        <div><label>Registered company name</label><input name="company_name" required maxlength="200"></div>
-        <div><label>Inventory category</label><input name="category" required placeholder="e.g. ACME-CORP" maxlength="40">
-          <div class="hint">SIMs and numbers are paired and allocated from this category.</div></div>
-      </div>
-      <div style="margin-top:14px"><label>Registered address</label><textarea name="company_address" rows="2" maxlength="500"></textarea></div>
-      <div class="actions"><button type="submit">Validate &amp; continue</button></div>
-    </form>
-    <div id="contractBox" class="hidden" style="margin-top:18px;border-top:1px solid var(--line);padding-top:18px">
-      <h2>Contract agreement</h2>
-      <form id="contractForm" class="row">
-        <div><label>Signed contract (PDF, max 10 MB)</label><input type="file" name="file" accept="application/pdf" required></div>
-        <div style="flex:0"><button type="submit">Upload</button></div>
-      </form>
-      <div class="actions"><button id="toStep2" disabled>Continue</button></div>
-    </div>
-    <div class="msg hidden" id="msg1"></div>
-  </section>
-
-  <!-- Step 2: Account officer -->
-  <section class="card step hidden" data-step="2">
-    <h2>Account officer (company representative)</h2>
-    <form id="aoForm">
-      <div class="grid">
-        <div><label>Full name</label><input name="full_name" required maxlength="200"></div>
-        <div><label>Designation</label><input name="designation" maxlength="100"></div>
-        <div><label>ID type</label><select name="id_type"><option>NRIC</option><option>FIN</option><option>PASSPORT</option></select></div>
-        <div><label>ID number</label><input name="id_number" required maxlength="20"></div>
-        <div><label>Email (verified at sign-in; eSIM QR codes are sent here)</label><input name="email" type="email" readonly></div>
-        <div><label>Mobile</label><input name="mobile" required placeholder="9xxxxxxx"></div>
-        <div><label>Delegated merchant code</label><input name="merchant_code" required placeholder="e.g. CORP-DIRECT-01"></div>
-      </div>
-      <div class="actions"><button type="button" class="secondary" data-back="1">Back</button><button type="submit">Verify &amp; continue</button></div>
-    </form>
-    <div class="msg hidden" id="msg2"></div>
-  </section>
-
-  <!-- Step 3: Plans and lines -->
-  <section class="card step hidden" data-step="3">
-    <h2>Select a plan</h2>
-    <div class="plans" id="plans"></div>
-
-    <h2 style="margin-top:22px">Upload SIM cards <span class="hint">(optional, if you have SIMs to add for this company)</span></h2>
-    <form id="simForm" class="row">
-      <div><label>SIM file (CSV: iccid[,sim_type])</label><input type="file" name="file" accept=".csv,.txt,text/csv" required></div>
-      <div><label>SIM type for rows without one</label><select name="sim_type"><option value="ESIM">eSIM</option><option value="PHYSICAL">Physical SIM</option></select></div>
-      <div style="flex:0"><button type="submit">Upload &amp; auto-pair</button></div>
-    </form>
-    <div class="msg hidden" id="msgSim"></div>
-
-    <h2 style="margin-top:22px">Add lines to cart</h2>
-    <div class="msg info" id="avail">Loading availability…</div>
-    <form id="cartForm" class="row" style="margin-top:12px">
-      <div><label>SIM type</label><select name="sim_type"><option value="ESIM">eSIM</option><option value="PHYSICAL">Physical SIM</option></select></div>
-      <div><label>Number of lines</label><input name="quantity" type="number" min="1" max="5000" value="1" required></div>
-      <div style="flex:0"><button type="submit">Pair &amp; add to cart</button></div>
-    </form>
-    <div class="msg hidden" id="msg3"></div>
-    <div id="miniCart" style="margin-top:14px"></div>
-    <div class="actions"><button type="button" class="secondary" data-back="2">Back</button><button id="toStep4" disabled>Review cart</button></div>
-  </section>
-
-  <!-- Step 4: Review -->
-  <section class="card step hidden" data-step="4">
-    <h2>Review &amp; submit</h2>
-    <dl id="reviewInfo"></dl>
-    <div id="aiReview" class="hidden" style="margin-top:16px"></div>
-    <h2 style="margin-top:20px">Cart summary</h2>
-    <table id="summaryTable"><thead><tr><th>Plan</th><th>Unit price</th><th>eSIM</th><th>Physical</th><th>Monthly subtotal</th></tr></thead><tbody></tbody></table>
-    <div class="total" id="total"></div>
-    <h2 style="margin-top:20px">Line details</h2>
-    <table id="linesTable"><thead><tr><th>#</th><th>Mobile number</th><th>SIM ICCID</th><th>SIM type</th><th>Plan</th><th>$/month</th><th></th></tr></thead><tbody></tbody></table>
-    <label style="margin-top:16px;display:flex;gap:8px;align-items:center;color:inherit"><input type="checkbox" id="confirm" style="width:auto"> I confirm the details above are correct and I am authorised to sign up these lines on behalf of the company.</label>
-    <div class="actions"><button type="button" class="secondary" data-back="3">Back</button><button id="submitOrder" disabled>Submit order</button></div>
-    <div class="msg hidden" id="msg4"></div>
-  </section>
-
-  <!-- Step 5: Status -->
-  <section class="card step hidden" data-step="5">
-    <h2>Order status</h2>
-    <dl id="statusInfo"></dl>
-    <table id="statusTable" style="margin-top:16px"><thead><tr><th>Mobile number</th><th>ICCID</th><th>Type</th><th>Plan</th><th>Status</th><th>eSIM QR</th></tr></thead><tbody></tbody></table>
-    <div class="actions"><button onclick="location.href='/'">New sign-up</button></div>
-  </section>
+  <div class="logo"><span class="logo-mark">C1</span>CorpOne Business</div>
+  <span class="sub">Corporate bulk-line sign-up</span>
+  <div class="right">
+    <span id="whoami" class="hidden"><span class="avatar" id="whoInitial"></span><span id="whoEmail"></span></span>
+    <a href="#" id="logout" class="hidden">Sign out</a>
+    <a href="admin" id="boLink">Back office</a>
   </div>
-</main>
-<script src="/static/app.js"></script>
+</header>
+
+<div class="shell">
+  <!-- ===== Sequence stepper ===== -->
+  <aside class="stepper">
+    <h3>Sign-up sequence</h3>
+    <div class="progress-label" id="progressLabel">Step 1 of 6</div>
+    <div class="progress"><div id="progressBar"></div></div>
+    <ol class="steps" id="steps">
+      <li data-step="1"><span class="dot"><span class="n">1</span></span><div><div class="t">Sign in</div><div class="d">Verify your work email with a one-time code</div></div></li>
+      <li data-step="2"><span class="dot"><span class="n">2</span></span><div><div class="t">Company</div><div class="d">UEN check and signed contract</div></div></li>
+      <li data-step="3"><span class="dot"><span class="n">3</span></span><div><div class="t">Account officer</div><div class="d">Representative identity and merchant code</div></div></li>
+      <li data-step="4"><span class="dot"><span class="n">4</span></span><div><div class="t">Plan &amp; lines</div><div class="d">Choose plan, add SIMs, pair numbers</div></div></li>
+      <li data-step="5"><span class="dot"><span class="n">5</span></span><div><div class="t">Review &amp; submit</div><div class="d">Check your cart and confirm</div></div></li>
+      <li data-step="6"><span class="dot"><span class="n">6</span></span><div><div class="t">Provisioning</div><div class="d">Network, billing and eSIM delivery</div></div></li>
+    </ol>
+  </aside>
+
+  <div class="panel">
+    <!-- ===== Step 1: Sign in ===== -->
+    <section class="card step" data-step="1">
+      <div class="login-wrap">
+        <div class="eyebrow">Step 1 of 6</div>
+        <h2>Sign in as account officer</h2>
+        <div class="msg info hidden" id="testMode" style="margin:0 0 16px">Test environment: the sign-in code is always <b id="testCode"></b>.</div>
+        <p class="lead">We'll email you a 6-digit code. Use your work email: eSIM QR codes and order updates are sent there.</p>
+        <form id="otpRequestForm">
+          <label>Work email</label><input name="email" type="email" required autocomplete="email" placeholder="name@company.com.sg">
+          <div class="actions"><button type="submit" style="width:100%">Email me a code</button></div>
+        </form>
+        <form id="otpVerifyForm" class="hidden">
+          <label>Enter the code sent to <b id="otpEmail"></b></label>
+          <input name="code" class="otp" inputmode="numeric" pattern="\d{6}" maxlength="6" required autocomplete="one-time-code" placeholder="••••••">
+          <div class="hint">The code expires in 5 minutes.</div>
+          <div class="actions"><button type="button" class="secondary" id="otpBack">Change email</button><span class="spacer"></span><button type="button" class="secondary" id="otpResend">Resend</button><button type="submit">Verify &amp; continue</button></div>
+        </form>
+        <div class="msg hidden" id="msg1"></div>
+      </div>
+    </section>
+
+    <!-- ===== Step 2: Company ===== -->
+    <section class="card step hidden" data-step="2">
+      <div class="eyebrow">Step 2 of 6</div>
+      <h2>Company information</h2>
+      <p class="lead">We check the UEN against Singapore ACRA rules and our blacklist, then store your signed contract securely.</p>
+      <div class="substeps">
+        <div class="sub" id="subCompany">
+          <h4>Company details</h4>
+          <form id="companyForm">
+            <div class="grid">
+              <div><label>UEN (Singapore BRN)</label><input name="uen" required placeholder="e.g. 197401143C" maxlength="12"></div>
+              <div><label>Registered company name</label><input name="company_name" required maxlength="200"></div>
+              <div><label>Inventory category</label><input name="category" required placeholder="e.g. ACME-CORP" maxlength="40">
+                <div class="hint">SIMs and numbers are paired and allocated from this category.</div></div>
+              <div class="full"><label>Registered address</label><textarea name="company_address" rows="2" maxlength="500"></textarea></div>
+            </div>
+            <div class="actions"><button type="submit">Validate UEN</button></div>
+          </form>
+        </div>
+        <div class="sub" id="subContract">
+          <h4>Signed contract agreement <small>PDF, max 10 MB</small></h4>
+          <form id="contractForm" class="row">
+            <div><input type="file" name="file" accept="application/pdf" required disabled></div>
+            <div style="flex:0"><button type="submit" disabled>Upload</button></div>
+          </form>
+        </div>
+      </div>
+      <div class="msg hidden" id="msg2"></div>
+      <div class="actions"><button id="toStep3" disabled>Continue to account officer →</button></div>
+    </section>
+
+    <!-- ===== Step 3: Account officer ===== -->
+    <section class="card step hidden" data-step="3">
+      <div class="eyebrow">Step 3 of 6</div>
+      <h2>Account officer</h2>
+      <p class="lead">The company representative who manages these lines. We check that they are not blacklisted.</p>
+      <form id="aoForm">
+        <div class="grid">
+          <div><label>Full name (as per ID)</label><input name="full_name" required maxlength="200"></div>
+          <div><label>Designation</label><input name="designation" maxlength="100" placeholder="e.g. IT Manager"></div>
+          <div><label>ID type</label><select name="id_type"><option>NRIC</option><option>FIN</option><option>PASSPORT</option></select></div>
+          <div><label>ID number</label><input name="id_number" required maxlength="20"></div>
+          <div><label>Email</label><input name="email" type="email" readonly><div class="hint">Verified at sign-in. eSIM QR codes go here.</div></div>
+          <div><label>Mobile</label><input name="mobile" required placeholder="9xxxxxxx"></div>
+          <div><label>Delegated merchant code</label><input name="merchant_code" required placeholder="e.g. CORP-DIRECT-01"></div>
+        </div>
+        <div class="actions"><button type="button" class="secondary" data-back="2">← Back</button><span class="spacer"></span><button type="submit">Verify &amp; continue →</button></div>
+      </form>
+      <div class="msg hidden" id="msg3"></div>
+    </section>
+
+    <!-- ===== Step 4: Plan & lines ===== -->
+    <section class="card step hidden" data-step="4">
+      <div class="eyebrow">Step 4 of 6</div>
+      <h2>Plan &amp; lines</h2>
+      <p class="lead">Pick a plan, optionally upload your SIM cards, then add paired SIM + number lines to your cart. You can repeat this to mix plans.</p>
+      <div class="substeps">
+        <div class="sub" id="subPlan">
+          <h4>Choose a plan</h4>
+          <div class="plans" id="plans"></div>
+        </div>
+        <div class="sub" id="subSim">
+          <h4>Upload SIM cards <small>(optional)</small></h4>
+          <form id="simForm" class="row">
+            <div><label>SIM file (CSV: iccid[,sim_type])</label><input type="file" name="file" accept=".csv,.txt,text/csv" required></div>
+            <div style="flex:0;min-width:auto"><label>Type for rows without one</label>
+              <div class="seg"><label><input type="radio" name="sim_type" value="ESIM" checked>eSIM</label><label><input type="radio" name="sim_type" value="PHYSICAL">Physical</label></div></div>
+            <div style="flex:0"><button type="submit" class="secondary">Upload &amp; auto-pair</button></div>
+          </form>
+          <div class="hint">ICCIDs must be numeric, 18–20 digits. New SIMs are paired automatically with numbers in your category.</div>
+          <div class="msg hidden" id="msgSim"></div>
+        </div>
+        <div class="sub" id="subCart">
+          <h4>Pair &amp; add lines</h4>
+          <div class="avail">
+            <div class="stat"><div class="v" id="availEsim">–</div><div class="k">eSIM lines ready</div></div>
+            <div class="stat"><div class="v" id="availPhys">–</div><div class="k">Physical SIM lines ready</div></div>
+            <div class="stat"><div class="v" id="availCat">–</div><div class="k">Category</div></div>
+          </div>
+          <form id="cartForm" class="row">
+            <div style="flex:0;min-width:auto"><label>SIM type</label>
+              <div class="seg"><label><input type="radio" name="sim_type" value="ESIM" checked>eSIM</label><label><input type="radio" name="sim_type" value="PHYSICAL">Physical</label></div></div>
+            <div style="max-width:180px"><label>Number of lines</label><input name="quantity" type="number" min="1" max="5000" value="1" required></div>
+            <div style="flex:0"><button type="submit">Add to cart</button></div>
+          </form>
+          <div class="msg hidden" id="msg4"></div>
+        </div>
+      </div>
+      <div class="cartbar"><div><div class="muted">Cart</div><div class="big" id="cartCount">0 lines</div></div><div><div class="muted">Monthly</div><div class="big" id="cartTotal">$0.00</div></div><span style="flex:1"></span><button id="toStep5" disabled>Review cart →</button></div>
+      <div class="actions"><button type="button" class="secondary" data-back="3">← Back</button><span class="spacer"></span></div>
+    </section>
+
+    <!-- ===== Step 5: Review ===== -->
+    <section class="card step hidden" data-step="5">
+      <div class="eyebrow">Step 5 of 6</div>
+      <h2>Review &amp; submit</h2>
+      <p class="lead">Check everything before you submit. After you submit, the lines are created and sent to the network and billing systems.</p>
+      <div class="summary-grid">
+        <div class="summary-box"><h4>Company <a data-back="2">Edit</a></h4><dl id="reviewCompany"></dl></div>
+        <div class="summary-box"><h4>Account officer <a data-back="3">Edit</a></h4><dl id="reviewAo"></dl></div>
+      </div>
+      <div id="aiReview" class="hidden"></div>
+      <h3>Cart summary</h3>
+      <table id="summaryTable"><thead><tr><th>Plan</th><th>Unit price</th><th>eSIM</th><th>Physical</th><th>Monthly subtotal</th></tr></thead><tbody></tbody></table>
+      <div class="total" id="total"></div>
+      <h3>Line details</h3>
+      <table id="linesTable"><thead><tr><th>#</th><th>Mobile number</th><th>SIM ICCID</th><th>Type</th><th>Plan</th><th>$/month</th><th></th></tr></thead><tbody></tbody></table>
+      <label style="margin-top:18px;display:flex;gap:10px;align-items:flex-start;font-weight:400"><input type="checkbox" id="confirm" style="width:auto;margin-top:3px"> I confirm the details above are correct and that I am authorised to sign up these lines on behalf of the company.</label>
+      <div class="actions"><button type="button" class="secondary" data-back="4">← Back</button><span class="spacer"></span><button id="submitOrder" disabled>Submit order</button></div>
+      <div class="msg hidden" id="msg5"></div>
+    </section>
+
+    <!-- ===== Step 6: Provisioning ===== -->
+    <section class="card step hidden" data-step="6">
+      <div class="eyebrow">Step 6 of 6</div>
+      <h2>Order submitted</h2>
+      <p class="lead" id="statusLead">We're setting up your lines. This page updates automatically.</p>
+      <div class="summary-grid">
+        <div class="summary-box"><h4>Progress</h4><ol class="timeline" id="timeline"></ol></div>
+        <div class="summary-box"><h4>Account</h4><dl id="statusInfo"></dl></div>
+      </div>
+      <h3>Lines</h3>
+      <table id="statusTable"><thead><tr><th>Mobile number</th><th>ICCID</th><th>Type</th><th>Plan</th><th>Status</th><th>eSIM QR</th></tr></thead><tbody></tbody></table>
+      <div class="actions"><button id="newSignup">Start a new sign-up</button></div>
+    </section>
+  </div>
+</div>
+<script src="static/app.js"></script>
 </body>
 </html>

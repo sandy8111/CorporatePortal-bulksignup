@@ -40,6 +40,10 @@ Security rules:
 - Limits: one resend per 30 seconds, 5 codes per email per 15 minutes, and 20 requests per IP
   per 15 minutes.
 
+**Test environments without email:** set `CORPONE_DEV_FIXED_OTP=123456` and every sign-in code is
+`123456`. The login page shows a "test environment" banner and the server logs a warning at
+startup. Expiry, attempt limits and rate limits still apply. Never set this in production.
+
 Every sign-up belongs to the email that created it. Another AO gets a 404, and order status is
 visible only to that account's AO. The AO email on the order is always the verified login email,
 so eSIM QR codes can only go to an inbox the AO has proved they control.

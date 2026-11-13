@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -6,17 +7,39 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.auth import purge_expired
+from app.config import get_settings
 from app.db import Base, SessionLocal, engine
 from app.gateway.inbound import gateway_app
 from app.routers import admin, auth, signups
 from app.seed import seed
 
 logging.basicConfig(level=logging.INFO)
+_PORT_PREFIX = re.compile(r"^/ports/\d+(?=/|$)")
+
+
+class PortProxyPrefix:
+    """Accept requests forwarded as /ports/<n>/... by the dev environment's proxy (with or without the prefix)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            m = _PORT_PREFIX.match(scope["path"])
+            if m and not scope.get("root_path"):
+                # ASGI: path keeps the full URL; root_path names the mount prefix Starlette strips for routing.
+                scope = dict(scope, root_path=m.group(0))
+        await self.app(scope, receive, send)
 STATIC = Path(__file__).resolve().parent.parent / "static"
 
 
 def create_app() -> FastAPI:
+    if get_settings().dev_fixed_otp:
+        logging.getLogger(__name__).warning(
+            "TEST MODE: CORPONE_DEV_FIXED_OTP is set - every sign-in code is %s. Never use this in production.",
+            get_settings().dev_fixed_otp)
     app = FastAPI(title="CorpOne Corporate Bulk Line Portal", version="1.0.0")
+    app.add_middleware(PortProxyPrefix)
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         seed(db)

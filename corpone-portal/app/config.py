@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     otp_max_per_15min: int = 5
     session_ttl_hours: int = 8
     cookie_secure: bool = False                 # set true behind HTTPS
+    # TESTING ONLY: when set (6 digits, e.g. 123456) every OTP is this value. Never set in production.
+    dev_fixed_otp: str = ""
 
     # --- Inbound API gateway
     gateway_default_rate_per_min: int = 60
@@ -62,4 +64,7 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    s = Settings()
+    if s.dev_fixed_otp and not (len(s.dev_fixed_otp) == 6 and s.dev_fixed_otp.isdigit()):
+        raise ValueError("CORPONE_DEV_FIXED_OTP must be exactly 6 digits")
+    return s
