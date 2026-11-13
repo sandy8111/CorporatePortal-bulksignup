@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CorpOne Back Office</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header>
+  <h1>CorpOne Back Office</h1><span class="sub">Inventory &amp; blacklist</span>
+  <a href="/">Sign-up portal</a>
+</header>
+<main>
+  <section class="card">
+    <div class="row">
+      <div><label>Admin token</label><input id="token" type="password" placeholder="X-Admin-Token"></div>
+      <div style="flex:0"><button id="saveToken">Connect</button></div>
+    </div>
+    <div class="msg hidden" id="msgToken"></div>
+  </section>
+
+  <section class="card">
+    <h2>Upload SIM inventory</h2>
+    <form id="simForm" class="row">
+      <div><label>CSV: iccid,sim_type,category[,smdp_address,matching_id]</label><input type="file" name="file" accept=".csv,.txt" required></div>
+      <div><label>Default category</label><input name="category" placeholder="used when the row has none"></div>
+      <div><label>Default SIM type</label><select name="sim_type"><option value="">(from file)</option><option value="ESIM">eSIM</option><option value="PHYSICAL">Physical</option></select></div>
+      <div style="flex:0"><button>Upload</button></div>
+    </form>
+    <div class="hint">ICCID must be numeric, 18–20 digits. SIMs auto-pair with available numbers in the same category.</div>
+    <div class="msg hidden" id="msgSim"></div>
+  </section>
+
+  <section class="card">
+    <h2>Upload number inventory</h2>
+    <form id="numForm" class="row">
+      <div><label>CSV: msisdn,category</label><input type="file" name="file" accept=".csv,.txt" required></div>
+      <div><label>Default category</label><input name="category" placeholder="used when the row has none"></div>
+      <div style="flex:0"><button>Upload</button></div>
+    </form>
+    <div class="hint">Numbers must be 8 digits starting with 8 or 9.</div>
+    <div class="msg hidden" id="msgNum"></div>
+  </section>
+
+  <section class="card">
+    <h2>Inventory by category</h2>
+    <table id="invTable"><thead><tr><th>Category</th><th>eSIM</th><th>Physical SIM</th><th>Numbers</th><th>Ready to allocate</th></tr></thead><tbody></tbody></table>
+    <div class="actions"><button class="secondary" id="refreshInv">Refresh</button></div>
+  </section>
+
+  <section class="card">
+    <h2>Blacklist</h2>
+    <form id="blForm">
+      <div class="grid">
+        <div><label>Subject</label><select name="subject_type" id="blSubject"><option value="ACCOUNT_OFFICER">Account officer</option><option value="COMPANY">Company</option></select></div>
+        <div><label>ID type</label><select name="id_type" id="blIdType"><option>NRIC</option><option>FIN</option><option>PASSPORT</option></select></div>
+        <div><label>ID value</label><input name="id_value" required></div>
+        <div><label>Start date</label><input name="start_date" type="date" required></div>
+        <div><label>End date (blank = indefinite)</label><input name="end_date" type="date"></div>
+        <div><label>Reason</label><input name="reason"></div>
+      </div>
+      <div class="actions"><button>Add to blacklist</button></div>
+    </form>
+    <div class="msg hidden" id="msgBl"></div>
+    <table id="blTable" style="margin-top:14px"><thead><tr><th>Subject</th><th>ID</th><th>Start</th><th>End</th><th>Reason</th><th></th></tr></thead><tbody></tbody></table>
+  </section>
+  <section class="card">
+    <h2>API gateway clients (partners &amp; AI agents)</h2>
+    <form id="keyForm">
+      <div class="grid">
+        <div><label>Client name</label><input name="name" required placeholder="e.g. Dealer CRM, Ops AI agent"></div>
+        <div><label>Rate limit (requests/min)</label><input name="rate_limit_per_min" type="number" min="1" placeholder="default 60"></div>
+      </div>
+      <label style="margin-top:12px">Scopes</label>
+      <div id="scopeBoxes" class="grid" style="gap:6px"></div>
+      <div class="actions"><button>Issue API key</button></div>
+    </form>
+    <div class="msg hidden" id="msgKey"></div>
+    <table id="keyTable" style="margin-top:14px"><thead><tr><th>Name</th><th>Key</th><th>Scopes</th><th>Limit/min</th><th>Last used</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
+    <div class="hint">Gateway API docs: <a href="/gateway/docs" target="_blank">/gateway/docs</a> · OpenAPI: <a href="/gateway/openapi.json" target="_blank">/gateway/openapi.json</a></div>
+  </section>
+
+  <section class="card">
+    <h2>Gateway monitoring</h2>
+    <h3 style="font-size:15px">Outbound upstreams (network, billing, AI)</h3>
+    <table id="upTable"><thead><tr><th>Upstream</th><th>Circuit</th><th>Consecutive failures</th></tr></thead><tbody></tbody></table>
+    <div class="actions"><button class="secondary" id="resetBreakers">Reset circuit breakers</button><button class="secondary" id="refreshLogs">Refresh</button></div>
+    <h3 style="font-size:15px">Recent outbound calls</h3>
+    <table id="outTable"><thead><tr><th>Time</th><th>Upstream</th><th>Operation</th><th>Attempt</th><th>Outcome</th><th>ms</th><th>Error</th></tr></thead><tbody></tbody></table>
+    <h3 style="font-size:15px;margin-top:18px">Recent inbound gateway requests</h3>
+    <table id="auditTable"><thead><tr><th>Time</th><th>Client</th><th>Request</th><th>Status</th><th>ms</th><th>IP</th></tr></thead><tbody></tbody></table>
+  </section>
+</main>
+<script src="/static/admin.js"></script>
+</body>
+</html>
