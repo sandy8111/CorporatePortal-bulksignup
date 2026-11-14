@@ -1,0 +1,185 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>CorpOne Corporate Portal · integration points and credentials</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Noto Sans", "Segoe UI", Arial, sans-serif; color: #1b2533; background: #fff; }
+  #d { width: 1900px; padding: 28px 30px 30px; }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  .sub { color: #6b7787; font-size: 14px; margin-bottom: 18px; }
+  .grid { display: grid; grid-template-columns: 230px 330px 380px 330px 240px; grid-template-rows: auto; grid-auto-rows: minmax(118px, auto); row-gap: 14px; }
+  .hdr { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #6b7787; align-self: end; padding-bottom: 2px; }
+  .box { border: 1.5px solid; border-radius: 10px; padding: 9px 11px; font-size: 13px; line-height: 1.35; background: #fff; align-self: center; }
+  .box b { display: block; font-size: 14px; margin-bottom: 1px; }
+  .box small { color: #5b6675; font-size: 12px; display: block; }
+  .user { border-color: #0a58ca; background: #e8f0fe; }
+  .ext  { border-color: #6b7787; background: #f1f3f6; border-style: dashed; }
+  .aws  { border-color: #c77700; background: #fff4e5; }
+  .disk { border-color: #1e7e34; background: #e7f6ec; }
+  .tag { display: inline-block; font-size: 10.5px; font-weight: 700; border-radius: 7px; padding: 1px 6px; margin: 3px 3px 0 0; }
+  .t-dev { background: #fff4e5; color: #8a4b00; border: 1px solid #f3d7a8; }
+  .t-prod { background: #e8f0fe; color: #073f91; border: 1px solid #c9d9fb; }
+  .t-prop { background: #f3e8ff; color: #5b21b6; border: 1px solid #ddd0fb; }
+  .t-gap { background: #fdecea; color: #9b1c1c; border: 1px solid #f6c7c3; }
+
+  /* connector: line + arrowhead, label above, credential chip below */
+  .conn { position: relative; align-self: center; padding: 0 10px; }
+  .conn .line { position: relative; height: 2px; background: #9aa5b4; margin: 6px 0; }
+  .conn .line::after { content: ""; position: absolute; right: -2px; top: -6px; border-top: 7px solid transparent; border-bottom: 7px solid transparent; border-left: 11px solid #9aa5b4; }
+  .conn .num { position: absolute; left: -2px; top: -12px; background: #1b2533; color: #fff; border-radius: 10px; font-size: 11px; font-weight: 700; padding: 1px 6px; }
+  .conn .proto { font-size: 12px; color: #3c4858; padding-left: 26px; min-height: 16px; }
+  .cred { border: 1.5px solid #b7791f; background: #fffbea; border-radius: 8px; padding: 6px 8px; font-size: 12px; line-height: 1.35; }
+  .cred .k { font-weight: 700; color: #7c4a03; }
+  .cred .k::before { content: "KEY"; font-size: 9.5px; font-weight: 800; letter-spacing: .06em; background: #b7791f; color: #fff; border-radius: 4px; padding: 1px 4px; margin-right: 6px; vertical-align: 1px; }
+  .cred.none .k::before { content: "NONE"; background: #9aa5b4; }
+  .cred.none { border-color: #c4ccd8; background: #f7f8fa; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; }
+
+  .app { grid-column: 3; border: 2px solid #1b2533; border-radius: 14px; padding: 12px; background: #fcfdff; display: flex; flex-direction: column; gap: 9px; }
+  .app .t { font-weight: 700; font-size: 15px; }
+  .app .t small { display: block; font-weight: 400; color: #6b7787; font-size: 12px; }
+  .ep { border: 1.5px solid #9aa5b4; border-radius: 9px; background: #fff; padding: 7px 9px; font-size: 12.5px; }
+  .ep b { font-size: 13px; }
+  .ep .chk { color: #1e7e34; font-weight: 600; }
+  .sect { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6b7787; margin-top: 4px; }
+
+  .edge { grid-column: 1 / span 2; border: 1.5px dashed #c77700; border-radius: 10px; background: #fffaf2; padding: 8px 11px; font-size: 12.5px; align-self: center; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin-top: 8px; }
+  th, td { border: 1px solid #dfe4ec; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #f1f3f6; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; color: #3c4858; }
+  h2 { font-size: 17px; margin: 26px 0 2px; }
+  .note { font-size: 12.5px; color: #5b6675; }
+  .legend { display: flex; gap: 16px; margin-top: 14px; font-size: 12.5px; color: #3c4858; flex-wrap: wrap; align-items: center; }
+</style></head>
+<body><div id="d">
+  <h1>CorpOne Corporate Portal · integration points and credentials</h1>
+  <div class="sub">Every connection into and out of the app, the credential it uses, and how that credential is stored · test environment today, production recommendation tagged</div>
+
+  <div class="grid">
+    <div class="hdr">Callers</div><div class="hdr">Inbound · protocol and credential</div><div class="hdr">corpone-portal (FastAPI :8501)</div>
+    <div class="hdr">Outbound · protocol and credential</div><div class="hdr">Systems called</div>
+
+    <!-- App box spans all rows -->
+    <div class="app" style="grid-row: 2 / span 7;">
+      <div class="t">corpone-portal<small>uvicorn :8501 · secrets read from .env / CORPONE_* at startup</small></div>
+      <div class="sect">Entry points (auth check)</div>
+      <div class="ep"><b>/api/auth</b> · OTP request / verify<br><span class="chk">check:</span> HMAC-SHA256(pepper, email:code), 5 min, 5 attempts, rate limits</div>
+      <div class="ep"><b>/api/signups, /api/companies, /api/merchants</b><br><span class="chk">check:</span> <span class="mono">current_ao</span>: SHA-256(token) in <span class="mono">ao_sessions</span>, not expired or revoked; owner match</div>
+      <div class="ep"><b>/api/admin/*</b><br><span class="chk">check:</span> <span class="mono">require_admin</span>: constant-time compare with <span class="mono">CORPONE_ADMIN_TOKEN</span></div>
+      <div class="ep"><b>/gateway/v1/*</b><br><span class="chk">check:</span> look up key prefix, constant-time compare SHA-256(secret), active, scope, per-key rate limit, audit row</div>
+      <div class="sect">Outbound</div>
+      <div class="ep"><b>Outbound gateway</b> (network, billing, ai)<br>retries + backoff, circuit breaker, rate limit, <span class="mono">outbound_call_logs</span></div>
+      <div class="ep"><b>boto3 / smtplib / SDK clients</b><br>S3, SES, SMTP, Anthropic, Bedrock</div>
+      <div class="sect">Never logged</div>
+      <div class="ep">request/response bodies, OTP codes, tokens, API keys (log line has method, path, status, ms, caller, request ID only)</div>
+    </div>
+
+    <!-- Row 2 -->
+    <div class="box user" style="grid-column:1;grid-row:2"><b>Account officer</b><small>browser · sign-up portal</small></div>
+    <div class="conn" style="grid-column:2;grid-row:2">
+      <span class="num">I1</span><div class="proto">HTTPS · /api/auth then /api/signups</div><div class="line"></div>
+      <div class="cred"><span class="k">Email OTP, then session</span><br>6-digit code to the email, then cookie <span class="mono">corpone_session</span> (HttpOnly, SameSite=Strict, 8 h, Secure in prod) or <span class="mono">Authorization: Bearer &lt;session token&gt;</span><br><span class="tag t-dev">DEV: fixed code 123456 for one test email</span></div>
+    </div>
+    <div class="conn" style="grid-column:4;grid-row:2">
+      <span class="num">O1</span><div class="proto">SQLAlchemy · CORPONE_DATABASE_URL</div><div class="line"></div>
+      <div class="cred"><span class="k">Database URL</span><br>SQLite file: no credential<br><span class="tag t-prod">PROD: Postgres user/password from Secrets Manager or IAM auth, TLS</span></div>
+    </div>
+    <div class="box disk" style="grid-column:5;grid-row:2"><b>Database</b><small>SQLite data/corpone.db</small><span class="tag t-prod">PROD: RDS Postgres</span></div>
+
+    <!-- Row 3 -->
+    <div class="box user" style="grid-column:1;grid-row:3"><b>Back office user</b><small>browser · admin page</small></div>
+    <div class="conn" style="grid-column:2;grid-row:3">
+      <span class="num">I2</span><div class="proto">HTTPS · /api/admin/*</div><div class="line"></div>
+      <div class="cred"><span class="k">Admin token</span><br>header <span class="mono">X-Admin-Token</span> = <span class="mono">CORPONE_ADMIN_TOKEN</span>; kept in the tab's sessionStorage<br><span class="tag t-gap">one shared token, no per-user identity</span></div>
+    </div>
+    <div class="conn" style="grid-column:4;grid-row:3">
+      <span class="num">O2</span><div class="proto">HTTPS · S3 PutObject · SSE AES256</div><div class="line"></div>
+      <div class="cred"><span class="k">AWS credentials</span><br>boto3 default chain (env, profile, instance or task role); bucket <span class="mono">CORPONE_S3_BUCKET</span>, region <span class="mono">CORPONE_AWS_REGION</span><br><span class="tag t-prod">PROD: IAM role with s3:PutObject on the bucket only</span></div>
+    </div>
+    <div class="box aws" style="grid-column:5;grid-row:3"><b>Contracts store</b><small>Amazon S3 (encrypted)</small><span class="tag t-dev">DEV: local data/uploads/</span></div>
+
+    <!-- Row 4 -->
+    <div class="box user" style="grid-column:1;grid-row:4"><b>Partner system</b><small>dealer CRM, ops tools</small></div>
+    <div class="conn" style="grid-column:2;grid-row:4">
+      <span class="num">I3</span><div class="proto">HTTPS · /gateway/v1/*</div><div class="line"></div>
+      <div class="cred"><span class="k">Partner API key</span><br><span class="mono">X-API-Key: cpk_&lt;prefix&gt;_&lt;secret&gt;</span> or <span class="mono">Authorization: Bearer cpk_…</span>; issued in back office, shown once; scopes and limit per key</div>
+    </div>
+    <div class="conn" style="grid-column:4;grid-row:4">
+      <span class="num">O3</span><div class="proto">Email · sign-in codes, eSIM QR codes</div><div class="line"></div>
+      <div class="cred"><span class="k">SES or SMTP</span><br>SES: AWS credential chain (ses:SendRawEmail). SMTP: <span class="mono">CORPONE_SMTP_HOST/PORT/USER/PASSWORD</span>, STARTTLS. From <span class="mono">CORPONE_EMAIL_FROM</span><br><span class="tag t-dev">DEV: .eml files, no credential</span></div>
+    </div>
+    <div class="box aws" style="grid-column:5;grid-row:4"><b>Email delivery</b><small>Amazon SES or SMTP relay</small><span class="tag t-dev">DEV: data/outbox/*.eml</span></div>
+
+    <!-- Row 5 -->
+    <div class="box user" style="grid-column:1;grid-row:5"><b>mcp_server</b><small>MCP tools for AI agents (stdio or :8000/mcp)</small></div>
+    <div class="conn" style="grid-column:2;grid-row:5">
+      <span class="num">I4</span><div class="proto">HTTPS · /gateway/v1/* (same path as partners)</div><div class="line"></div>
+      <div class="cred"><span class="k">Gateway API key</span><br><span class="mono">CORPONE_GATEWAY_API_KEY</span> sent as <span class="mono">Authorization: Bearer cpk_…</span> to <span class="mono">CORPONE_GATEWAY_URL</span><br><span class="tag t-prod">PROD: read-only scopes, key in AgentCore Identity or Secrets Manager</span></div>
+    </div>
+    <div class="conn" style="grid-column:4;grid-row:5">
+      <span class="num">O4</span><div class="proto">HTTPS POST · line activation</div><div class="line"></div>
+      <div class="cred"><span class="k">Telco API key</span><br><span class="mono">Authorization: Bearer CORPONE_TELCO_API_KEY</span> to <span class="mono">CORPONE_NETWORK_API_BASE_URL</span>; <span class="mono">Idempotency-Key: line-&lt;id&gt;-network</span><br><span class="tag t-dev">DEV: mock, no call</span></div>
+    </div>
+    <div class="box ext" style="grid-column:5;grid-row:5"><b>Network API</b><small>activates SIM + number</small></div>
+
+    <!-- Row 6 -->
+    <div class="box user" style="grid-column:1;grid-row:6"><b>AI agent</b><small>Claude Desktop / Code, Strands agent, AgentCore</small></div>
+    <div class="conn" style="grid-column:2;grid-row:6">
+      <span class="num">I5</span><div class="proto">MCP · to mcp_server (not to the app)</div><div class="line"></div>
+      <div class="cred"><span class="k">Agent to MCP server</span><br>stdio: local process, no network credential<br><span class="tag t-prop">PROPOSED: AgentCore Runtime / Gateway with Cognito JWT or IAM SigV4</span></div>
+    </div>
+    <div class="conn" style="grid-column:4;grid-row:6">
+      <span class="num">O5</span><div class="proto">HTTPS POST · billing account, subscriptions</div><div class="line"></div>
+      <div class="cred"><span class="k">Telco API key</span><br>same <span class="mono">CORPONE_TELCO_API_KEY</span> to <span class="mono">CORPONE_BILLING_API_BASE_URL</span>; <span class="mono">Idempotency-Key: account-&lt;id&gt;</span>, <span class="mono">line-&lt;id&gt;-billing</span><br><span class="tag t-dev">DEV: mock</span></div>
+    </div>
+    <div class="box ext" style="grid-column:5;grid-row:6"><b>Billing API</b><small>accounts, subscriptions</small></div>
+
+    <!-- Row 7 -->
+    <div class="edge" style="grid-row:7"><b>Edge (test):</b> browser, then CloudFront (HTTPS), then nginx :80, then <span class="mono">/ports/8501/</span> to the app. This path has <b>no login of its own</b>; every API call is still checked by the app (I1–I3). API responses are <span class="mono">no-store, private</span> so CloudFront never caches them. <span class="tag t-gap">behind nginx the client IP is the proxy's</span> <span class="tag t-prod">PROD: load balancer over HTTPS, trust X-Forwarded-For from it only</span></div>
+    <div class="conn" style="grid-column:4;grid-row:7">
+      <span class="num">O6</span><div class="proto">HTTPS · Messages API · contract review</div><div class="line"></div>
+      <div class="cred"><span class="k">Anthropic API key</span><br><span class="mono">ANTHROPIC_API_KEY</span> (read by the SDK) when <span class="mono">CORPONE_AI_PROVIDER=anthropic</span><br><span class="tag t-dev">DEV: AI disabled</span></div>
+    </div>
+    <div class="box ext" style="grid-column:5;grid-row:7"><b>Claude · Anthropic API</b><small>advisory contract check</small></div>
+
+    <!-- Row 8 -->
+    <div class="box user" style="grid-column:1;grid-row:8;border-style:dashed"><b>eSIM data in</b><small>SIM CSV: smdp_address, matching_id</small></div>
+    <div class="conn" style="grid-column:2;grid-row:8">
+      <span class="num">D1</span><div class="proto">upload via I2 / I3 / portal SIM upload</div><div class="line"></div>
+      <div class="cred none"><span class="k">Activation code, not a key</span><br><span class="mono">LPA:1$&lt;SM-DP+&gt;$&lt;MatchingID&gt;</span> built per eSIM; QR emailed only to the AO's verified login email (O3)</div>
+    </div>
+    <div class="conn" style="grid-column:4;grid-row:8">
+      <span class="num">O7</span><div class="proto">HTTPS · Bedrock (Mantle client) · contract review</div><div class="line"></div>
+      <div class="cred"><span class="k">AWS credentials</span><br>AWS credential chain (bedrock:InvokeModel) when <span class="mono">CORPONE_AI_PROVIDER=bedrock</span>; fallback model <span class="mono">CORPONE_AI_BEDROCK_FALLBACK_MODEL</span></div>
+    </div>
+    <div class="box aws" style="grid-column:5;grid-row:8"><b>Claude · Amazon Bedrock</b><small>same review, AWS-hosted</small></div>
+  </div>
+
+  <h2>Key and secret register</h2>
+  <div class="note">Where each credential lives today, how the app stores or checks it, and what production should use.</div>
+  <table>
+    <thead><tr><th>#</th><th>Credential</th><th>Setting / header</th><th>Used for</th><th>How it's stored or checked</th><th>Today (test)</th><th>Production</th></tr></thead>
+    <tbody>
+      <tr><td>I1</td><td>Sign-in code</td><td>email · <span class="mono">CORPONE_OTP_PEPPER</span></td><td>AO sign-in</td><td>Only HMAC-SHA256(pepper, email:code) stored; 5 min, single use, 5 attempts</td><td>random per request; fixed 123456 for <span class="mono">admin@corp1.com.sg</span></td><td>pepper from Secrets Manager; fixed code never set</td></tr>
+      <tr><td>I1</td><td>Session token</td><td>cookie <span class="mono">corpone_session</span> / <span class="mono">Bearer</span></td><td>AO API calls</td><td>32 random bytes; only SHA-256 stored in <span class="mono">ao_sessions</span>; 8 h; revoked on logout</td><td>cookie without Secure flag</td><td><span class="mono">CORPONE_COOKIE_SECURE=true</span> over HTTPS</td></tr>
+      <tr><td>I2</td><td>Admin token</td><td><span class="mono">X-Admin-Token</span> · <span class="mono">CORPONE_ADMIN_TOKEN</span></td><td>whole back office</td><td>constant-time compare with the env value; browser keeps it in sessionStorage</td><td>random token set at server start</td><td>Secrets Manager + rotation; better: per-user SSO (IAM Identity Center / OIDC)</td></tr>
+      <tr><td>I3, I4</td><td>Gateway API key</td><td><span class="mono">X-API-Key</span> / <span class="mono">Bearer cpk_…</span> · <span class="mono">CORPONE_GATEWAY_API_KEY</span></td><td>partners, MCP server</td><td>prefix + SHA-256 of secret stored; shown once; scopes, per-key rate limit, revocable, audited</td><td>issued in back office</td><td>one key per client, least scopes; caller keeps it in Secrets Manager / AgentCore Identity</td></tr>
+      <tr><td>I5</td><td>Agent identity</td><td>JWT or SigV4</td><td>agent to MCP server</td><td>checked by AgentCore (not by the app)</td><td>stdio, local only</td><td>Cognito client-credentials JWT or IAM</td></tr>
+      <tr><td>O1</td><td>Database credential</td><td><span class="mono">CORPONE_DATABASE_URL</span></td><td>all data</td><td>connection string</td><td>SQLite file</td><td>Postgres secret in Secrets Manager or IAM DB auth; TLS</td></tr>
+      <tr><td>O2, O3, O7</td><td>AWS credentials</td><td>boto3 / SDK default chain</td><td>S3, SES, Bedrock</td><td>never stored by the app</td><td>not used (local storage, console email, AI off)</td><td>IAM role (ECS task / EC2 instance), least privilege; no access keys in env</td></tr>
+      <tr><td>O3</td><td>SMTP password</td><td><span class="mono">CORPONE_SMTP_USER</span> / <span class="mono">_PASSWORD</span></td><td>email via SMTP</td><td>env value; STARTTLS</td><td>not used</td><td>Secrets Manager, or SES with IAM instead</td></tr>
+      <tr><td>O4, O5</td><td>Telco API key</td><td><span class="mono">Authorization: Bearer</span> · <span class="mono">CORPONE_TELCO_API_KEY</span></td><td>Network and Billing APIs</td><td>env value; plus <span class="mono">Idempotency-Key</span> per call</td><td>mock mode, not used</td><td>Secrets Manager; separate keys per upstream if supported; mTLS if offered</td></tr>
+      <tr><td>O6</td><td>Anthropic API key</td><td><span class="mono">ANTHROPIC_API_KEY</span></td><td>contract review</td><td>read by the Anthropic SDK</td><td>AI disabled</td><td>Secrets Manager, or use Bedrock (O7) with IAM</td></tr>
+      <tr><td>D1</td><td>eSIM activation code</td><td>SIM CSV <span class="mono">smdp_address</span>, <span class="mono">matching_id</span></td><td>eSIM QR codes</td><td>stored with the SIM; emailed only to the verified AO email</td><td>default SM-DP+ <span class="mono">smdp.corpone.sg</span></td><td>treat as sensitive: restrict upload, encrypt DB at rest</td></tr>
+    </tbody>
+  </table>
+
+  <div class="legend">
+    <span class="cred" style="display:inline-block"><span class="k">credential</span></span>
+    <span class="tag t-dev">DEV</span> test setup today
+    <span class="tag t-prod">PROD</span> production recommendation
+    <span class="tag t-prop">PROPOSED</span> not built yet
+    <span class="tag t-gap">GAP</span> known weakness
+  </div>
+</div></body></html>

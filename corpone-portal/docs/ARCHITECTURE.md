@@ -8,6 +8,15 @@ the detailed rules of each step, see the [README](../README.md).
 The picture is generated from [architecture.html](architecture.html); edit that file and take a new
 screenshot to update it.
 
+## Integration points and credentials
+
+Every connection into (I1–I5) and out of (O1–O7) the app, the credential each uses, how the app
+stores or checks it, and the production recommendation, with a key and secret register.
+
+![Integration points and credentials](integration.png)
+
+Source: [integration.html](integration.html).
+
 ## Runtime
 
 - **Edge (test environment):** CloudFront (HTTPS) → nginx on :80 → `/ports/8501/` → the app on
