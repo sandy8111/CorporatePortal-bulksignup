@@ -159,7 +159,8 @@ def steps(cfg: InfraConfig) -> list[Step]:
             "Description": "CorpOne operations: inventory, blacklist, account status, retry provisioning"}, what="group: ops"),
         Step("app_client", "cognito-idp", "create_user_pool_client", lambda o: {
             "UserPoolId": o["user_pool_id"], "ClientName": n["app_client"], "GenerateSecret": False,
-            "ExplicitAuthFlows": ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"],
+            "ExplicitAuthFlows": ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH",
+                                  "ALLOW_ADMIN_USER_PASSWORD_AUTH"],   # server-side only, needs IAM: smoke tests and evals
             "AccessTokenValidity": 60, "IdTokenValidity": 60, "RefreshTokenValidity": 8,
             "TokenValidityUnits": {"AccessToken": "minutes", "IdToken": "minutes", "RefreshToken": "hours"},
             "PreventUserExistenceErrors": "ENABLED"},

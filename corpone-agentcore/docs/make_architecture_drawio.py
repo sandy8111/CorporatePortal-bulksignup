@@ -1,6 +1,6 @@
-"""Generate docs/architecture.drawio: corpone-agentcore architecture with the numbered request flow.
+"""Generate docs/architecture_agentcore.drawio: corpone-agentcore architecture with the numbered request flow.
 
-Usage: python3 docs/make_architecture_drawio.py docs/architecture.drawio
+Usage: python3 docs/make_architecture_drawio.py docs/architecture_agentcore.drawio
 Once edited by hand in draw.io, treat the .drawio file as the source and stop regenerating it.
 """
 import sys
