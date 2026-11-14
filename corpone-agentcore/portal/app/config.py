@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     # OpenTelemetry tracing (off unless enabled). Uses the standard OTEL_* env vars for the exporter.
     otel_enabled: bool = False
     otel_service_name: str = "corpone-portal"
+    # AI assistant page (/assistant): written by infra/deploy.py to infra/build/portal-assistant-*.env.
+    # Empty: the page says the assistant is not set up. None of these are secrets.
+    assistant_runtime_arn: str = ""
+    assistant_region: str = ""
+    assistant_login_url: str = ""        # Cognito Managed Login base, https://<domain>.auth.<region>.amazoncognito.com
+    assistant_client_id: str = ""
+    assistant_rate_per_min: int = 20
+    assistant_runtime_url: str = ""      # optional override of the Runtime invocation URL (VPC endpoint, local test)
     # TESTING ONLY: when BOTH are set, the OTP for dev_fixed_otp_email is always dev_fixed_otp (6 digits).
     # Every other email still gets a random code. Never set in production.
     dev_fixed_otp: str = ""

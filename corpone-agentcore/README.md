@@ -39,7 +39,7 @@ flowchart LR
 
 | AgentCore service | How this project uses it |
 |---|---|
-| **Identity** | Cognito JWTs on the Runtime and the Gateway (inbound). The portal API key is stored in the Identity token vault and added by the Gateway (outbound); no secret is in the agent or its environment |
+| **Identity** | Cognito JWTs on the Runtime and the Gateway (inbound); Cognito Managed Login (hosted page, authorization code + PKCE, no self sign-up) for the portal's `/assistant` chat page. The portal API key is stored in the Identity token vault and added by the Gateway (outbound); no secret is in the agent or its environment |
 | **Gateway** | The portal's partner API as 6 MCP tools generated from the code (`listPlans`, `validateUen`, `getInventorySummary`, `checkBlacklist`, `getAccountStatus`, `retryProvisioning`); uploads are never exposed |
 | **Policy** | 4 Cedar policies: everyone may list plans and validate UENs; only `ops` may read inventory, blacklist and accounts; retrying provisioning is ops-only, needs a `CA…` account number, and is also covered by a `forbid` that no future permit can override. Starts in `LOG_ONLY`, then `ENFORCE`. Optional kill switch |
 | **Memory** | Short-term only: one event per turn, NRIC/FIN and emails masked, events expire after 7 days, actor = token subject (never the email). Long-term memory is off pending a privacy review |
@@ -58,11 +58,20 @@ Officers deliberately get no inventory, blacklist or account tools: the partner 
 would show other companies' data. **Next step** for per-officer data: a Gateway target with
 `JWT_PASSTHROUGH` to a portal endpoint that verifies the Cognito token and scopes results to that officer.
 
+## Assistant page in the portal
+
+`/assistant` (e.g. `https://<host>/ports/8501/assistant`) signs the user in through Cognito Managed Login and chats
+with the assistant. The portal relays each message to AgentCore Runtime with the user's own access token
+(`POST /api/assistant/invoke`, rate-limited per client); the Runtime, Gateway and Policy check that token, so the
+portal never decides who the user is. The page is off until the portal is started with the settings
+`infra/deploy.py` writes to `infra/build/portal-assistant-<project>-<region>.env`. Users are admin-created (the
+notebooks can invite one with a temporary password); there is no self sign-up.
+
 ## Run the tests (no AWS calls)
 
 ```bash
 uv venv .venv && uv pip install --python .venv/bin/python -r requirements-dev.txt
-scripts/test_all.sh            # portal 88 · agent 10 · infra 11 · evals 3
+scripts/test_all.sh            # portal 94 · agent 10 · infra 23 · evals 3
 ```
 
 The infra tests validate every deployment request against the real AWS API models (types, lengths, enums

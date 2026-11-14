@@ -265,6 +265,31 @@ for role, prompt in SMOKE.items():
 """)
 
 md("""
+## 6b · Try the assistant in your browser
+
+The deployment wrote the portal's assistant settings (no secrets) to `infra/build/portal-assistant-<project>-<region>.env`.
+Restart the portal with them, then open the assistant page and sign in through Cognito's hosted login page.
+Optionally invite yourself: you get a one-time temporary password and choose your own at first sign-in.
+""")
+code("""
+BROWSER_USER = ""        # e.g. "you@corpone.sg"; empty = don't invite anyone
+BROWSER_ROLE = "ops"     # "ops" or "officer"
+if not DEPLOYED:
+    print("Not deployed yet: skipped.")
+else:
+    env_path = deploy.write_portal_env(cfg, OUT)
+    print("Portal settings:", env_path)
+    print(env_path.read_text())
+    print("Restart the portal with them, e.g.:\\n"
+          f"  set -a; . {env_path}; set +a; (cd portal && ../.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8501)")
+    print("\\nAssistant page:", cfg.assistant_url)
+    print("Hosted login:  ", cfg.login_url)
+    if BROWSER_USER and CONFIRM_DEPLOY:
+        temp = prod.invite_user(session.client("cognito-idp"), OUT["user_pool_id"], BROWSER_USER, BROWSER_ROLE)
+        print(f"\\nInvited {BROWSER_USER} ({BROWSER_ROLE}). One-time temporary password (shown once, not saved):\\n  {temp}")
+""")
+
+md("""
 ## 7 · Policy check, straight to the Gateway
 
 Bypasses the agent and calls the Gateway as each role. In `LOG_ONLY` every call succeeds and decisions are only

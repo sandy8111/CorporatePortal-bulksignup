@@ -43,6 +43,11 @@ def actions(cfg, out):
         if f"{role}_arn" in out:
             acts.append(("iam", "delete_role_policy", {"RoleName": n[role], "PolicyName": policy}))
             acts.append(("iam", "delete_role", {"RoleName": n[role]}))
+    if "login_branding_id" in out:
+        acts.append(("cognito-idp", "delete_managed_login_branding",
+                     {"ManagedLoginBrandingId": out["login_branding_id"], "UserPoolId": out["user_pool_id"]}))
+    if "user_pool_id" in out and "login_domain" in out:
+        acts.append(("cognito-idp", "delete_user_pool_domain", {"Domain": out["login_domain"], "UserPoolId": out["user_pool_id"]}))
     if "user_pool_id" in out:
         acts.append(("cognito-idp", "delete_user_pool", {"UserPoolId": out["user_pool_id"]}))
     return acts

@@ -163,8 +163,20 @@ def steps(cfg: InfraConfig) -> list[Step]:
                                   "ALLOW_ADMIN_USER_PASSWORD_AUTH"],   # server-side only, needs IAM: smoke tests and evals
             "AccessTokenValidity": 60, "IdTokenValidity": 60, "RefreshTokenValidity": 8,
             "TokenValidityUnits": {"AccessToken": "minutes", "IdToken": "minutes", "RefreshToken": "hours"},
-            "PreventUserExistenceErrors": "ENABLED"},
-            {"app_client_id": "UserPoolClient.ClientId"}, what="public app client (SRP sign-in, 60-minute tokens)"),
+            "PreventUserExistenceErrors": "ENABLED",
+            # Managed Login (hosted page) for the portal's /assistant page: authorization code + PKCE, no secret
+            "AllowedOAuthFlowsUserPoolClient": True, "AllowedOAuthFlows": ["code"],
+            "AllowedOAuthScopes": ["openid", "email", "profile"], "SupportedIdentityProviders": ["COGNITO"],
+            "CallbackURLs": [cfg.assistant_url], "LogoutURLs": [cfg.assistant_url]},
+            {"app_client_id": "UserPoolClient.ClientId"},
+            what=f"public app client (SRP / hosted login with PKCE, 60-minute tokens, returns to {cfg.assistant_url})"),
+        Step("login_domain", "cognito-idp", "create_user_pool_domain", lambda o: {
+            "Domain": o["login_domain"], "UserPoolId": o["user_pool_id"], "ManagedLoginVersion": 2},
+            what="Cognito Managed Login domain (hosted sign-in page; self sign-up stays off)"),
+        Step("login_branding", "cognito-idp", "create_managed_login_branding", lambda o: {
+            "UserPoolId": o["user_pool_id"], "ClientId": o["app_client_id"], "UseCognitoProvidedValues": True},
+            {"login_branding_id": "ManagedLoginBranding.ManagedLoginBrandingId"},
+            what="Managed Login branding (Cognito default style) for the app client"),
 
         # ---------------------------------------------------------------- Gateway execution role
         Step("gateway_role", "iam", "create_role", lambda o: {
@@ -289,6 +301,7 @@ def placeholder_outputs(cfg: InfraConfig) -> dict:
     """Stand-in outputs for dry runs and tests (realistic shapes so length rules still apply)."""
     acct = cfg.account_id or "111122223333"
     return {
+        "login_domain": cfg.login_domain,
         "portal_api_key": "cpk_dryrun00_" + "x" * 32,
         "openapi": openapi_payload(cfg) if cfg.portal_gateway_url.startswith("https://") else "{}",
         "user_pool_id": f"{cfg.region}_AbCdEf123", "user_pool_arn": f"arn:aws:cognito-idp:{cfg.region}:{acct}:userpool/x",

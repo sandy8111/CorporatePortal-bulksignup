@@ -124,6 +124,16 @@ def ensure_user(cognito, pool_id: str, email: str, group: str, password: str) ->
     cognito.admin_add_user_to_group(UserPoolId=pool_id, Username=email, GroupName=group)
 
 
+def invite_user(cognito, pool_id: str, email: str, group: str) -> str:
+    """Admin-create a real browser user with a one-time temporary password (returned once, never stored).
+    Cognito's hosted login makes them choose their own password at first sign-in."""
+    temp = strong_password()
+    cognito.admin_create_user(UserPoolId=pool_id, Username=email, TemporaryPassword=temp, MessageAction="SUPPRESS",
+                              UserAttributes=[{"Name": "email", "Value": email}, {"Name": "email_verified", "Value": "true"}])
+    cognito.admin_add_user_to_group(UserPoolId=pool_id, Username=email, GroupName=group)
+    return temp
+
+
 def access_token(cognito, pool_id: str, client_id: str, email: str, password: str) -> str:
     """Server-side sign-in (ADMIN_USER_PASSWORD_AUTH needs IAM credentials, so it can't be used from a browser)."""
     r = cognito.admin_initiate_auth(UserPoolId=pool_id, ClientId=client_id, AuthFlow="ADMIN_USER_PASSWORD_AUTH",

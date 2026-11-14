@@ -49,6 +49,16 @@
 - Add a scenario to `evals/dataset.jsonl` for every incident or new tool; the tests check scenarios never expect
   a tool the role's policy denies.
 
+## Users and the assistant page
+
+- Users are admin-created only. Invite one from the notebook (phase 6b) or with
+  `aws cognito-idp admin-create-user --user-pool-id <id> --username <email> --temporary-password <one-time>` plus
+  `admin-add-user-to-group --group-name ops|officer`. Cognito's hosted page makes them set their own password.
+- Turn on MFA before real use: `aws cognito-idp set-user-pool-mfa-config --user-pool-id <id> --software-token-mfa-configuration Enabled=true --mfa-configuration OPTIONAL`.
+- Start the portal with `infra/build/portal-assistant-<project>-<region>.env` to switch `/assistant` on; the callback
+  URL registered on the app client is that page (`ASSISTANT_URL`, default: `PORTAL_GATEWAY_URL` with `/assistant`
+  instead of `/gateway`). If the portal moves, re-deploy so the callback URL matches.
+
 ## Privacy (PDPA)
 
 - Region `ap-southeast-1` keeps Runtime, Memory, logs and traces in Singapore.

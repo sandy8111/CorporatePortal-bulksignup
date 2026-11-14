@@ -13,7 +13,7 @@ from app.db import Base, SessionLocal, engine
 from app.gateway.inbound import gateway_app
 from app import telemetry
 from app.request_log import RequestLog
-from app.routers import admin, auth, signups
+from app.routers import admin, assistant, auth, signups
 from app.seed import seed
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -59,7 +59,7 @@ class NoStoreApi:
         await self.app(scope, receive, send_no_store)
 # Scripts and styles are linked as static/v/<content hash>/<name>, so every change gets a new URL and
 # no browser or CDN (e.g. CloudFront in front of the dev proxy) can pair a new page with an old script.
-VERSIONED = ("app.js", "admin.js", "styles.css")
+VERSIONED = ("app.js", "admin.js", "assistant.js", "styles.css")
 _ASSET_LINK = re.compile(r'(["\'])static/(' + "|".join(map(re.escape, VERSIONED)) + r')\1')
 
 
@@ -104,6 +104,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(signups.router)
     app.include_router(admin.router)
+    app.include_router(assistant.router)
     app.mount("/gateway", gateway_app)  # partner & AI gateway; docs at /gateway/docs
 
     @app.get("/static/v/{version}/{name}", include_in_schema=False)
@@ -123,6 +124,10 @@ def create_app() -> FastAPI:
     @app.get("/admin", include_in_schema=False)
     def admin_page():
         return _page("admin.html")
+
+    @app.get("/assistant", include_in_schema=False)
+    def assistant_page():
+        return _page("assistant.html")
 
     @app.get("/healthz", include_in_schema=False)
     def health():

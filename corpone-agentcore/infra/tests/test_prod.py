@@ -166,3 +166,12 @@ def test_service_access_reports_scp_denials():
             return c
     res = {name: (ok, detail) for name, ok, detail in prod.service_access(Sess())}
     assert res["access xray:get_trace_segment_destination"] == (False, "AccessDeniedException (blocked by an organization SCP)")
+
+
+def test_invite_user_gets_a_temporary_password():
+    cog = client("cognito-idp")
+    with Stubber(cog) as st:
+        st.add_response("admin_create_user", {"User": {"Username": "me@corpone.sg"}})
+        st.add_response("admin_add_user_to_group", {}, {"UserPoolId": POOL, "Username": "me@corpone.sg", "GroupName": "officer"})
+        temp = prod.invite_user(cog, POOL, "me@corpone.sg", "officer")
+    assert len(temp) == 20

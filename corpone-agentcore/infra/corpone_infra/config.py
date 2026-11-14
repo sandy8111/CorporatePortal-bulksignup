@@ -20,6 +20,25 @@ class InfraConfig:
     eval_sampling_percent: float = field(default_factory=lambda: float(_env("EVAL_SAMPLING_PERCENT", "10")))
     memory_expiry_days: int = field(default_factory=lambda: int(_env("MEMORY_EXPIRY_DAYS", "7")))
     target_name: str = "CorpOnePortal"
+    # Page Cognito returns to after login; default: the portal's /assistant next to its /gateway
+    assistant_url_override: str = field(default_factory=lambda: _env("ASSISTANT_URL"))
+
+    @property
+    def assistant_url(self) -> str:
+        if self.assistant_url_override:
+            return self.assistant_url_override.rstrip("/")
+        base = self.portal_gateway_url.rstrip("/")
+        return (base[: -len("/gateway")] if base.endswith("/gateway") else base) + "/assistant"
+
+    @property
+    def login_domain(self) -> str:
+        """Cognito domain prefix: globally unique per region, so it carries the end of the account id."""
+        prefix = re.sub(r"[^a-z0-9-]", "-", self.dashed.lower()).strip("-")[:48]
+        return f"{prefix}-{(self.account_id or '000000')[-6:]}"
+
+    @property
+    def login_url(self) -> str:
+        return f"https://{self.login_domain}.auth.{self.region}.amazoncognito.com"
 
     # ---------------------------------------------------------------- derived names (AWS naming rules differ per service)
     @property

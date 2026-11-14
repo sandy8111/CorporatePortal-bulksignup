@@ -118,6 +118,7 @@ def test_destroy_lists_then_deletes_in_reverse_order(env, monkeypatch, capsys):
     assert ops[0] == "delete_online_evaluation_config" and ops[-1] == "delete_user_pool"
     assert ops.index("delete_gateway_target") < ops.index("delete_gateway") < ops.index("delete_policy_engine")
     assert ops.count("delete_policy") == 4 and ops.count("delete_role") == 3
+    assert ops.index("delete_managed_login_branding") < ops.index("delete_user_pool_domain") < ops.index("delete_user_pool")
     assert not (env / "state-corpone-agentcore-ap-southeast-1.json").exists() and (env / "state-corpone-agentcore-ap-southeast-1.destroyed.json").exists()
 
 
@@ -149,3 +150,13 @@ def test_state_is_separate_per_project_and_region(env, monkeypatch):
     monkeypatch.setenv("AWS_REGION", "us-east-1")
     assert deploy.load_state(InfraConfig())["done"] == []          # a test stack starts from nothing
     assert sorted(p.name for p in env.glob("state-*.json")) == ["state-corpone-agentcore-ap-southeast-1.json"]
+
+
+def test_apply_writes_portal_assistant_settings_without_secrets(env, monkeypatch):
+    log = []
+    monkeypatch.setattr(boto3, "Session", lambda **k: FakeSession(log))
+    deploy.main(["--apply"])
+    text = (env / "portal-assistant-corpone-agentcore-ap-southeast-1.env").read_text()
+    assert "CORPONE_ASSISTANT_RUNTIME_ARN=" in text and "CORPONE_ASSISTANT_CLIENT_ID=" in text
+    assert "CORPONE_ASSISTANT_LOGIN_URL=https://corpone-agentcore-223333.auth.ap-southeast-1.amazoncognito.com" in text
+    assert KEY not in text

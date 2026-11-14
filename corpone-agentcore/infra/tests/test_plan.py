@@ -151,3 +151,21 @@ def test_config_problems():
     assert any("PORTAL_API_KEY" in p for p in InfraConfig(portal_gateway_url="https://x").problems(for_apply=True))
     n = InfraConfig(project="CorpOne Agent-Core").names()
     assert n["memory"] == "CorpOne_Agent_Core_stm" and n["gateway"] == "CorpOne-Agent-Core-gateway"
+
+
+def test_hosted_login_for_the_assistant_page(cfg):
+    req = dict((s.key, p) for s, p in built(cfg))
+    client = req["app_client"]
+    assert client["AllowedOAuthFlows"] == ["code"] and client["AllowedOAuthFlowsUserPoolClient"]
+    assert client["GenerateSecret"] is False and client["SupportedIdentityProviders"] == ["COGNITO"]
+    assert client["CallbackURLs"] == client["LogoutURLs"] == ["https://portal.example.sg/assistant"]
+    assert req["login_domain"] == {"Domain": "corpone-agentcore-223333", "UserPoolId": "ap-southeast-1_AbCdEf123",
+                                   "ManagedLoginVersion": 2}
+    assert req["login_branding"]["UseCognitoProvidedValues"] is True
+    assert cfg.login_url == "https://corpone-agentcore-223333.auth.ap-southeast-1.amazoncognito.com"
+    pool = req["user_pool"]
+    assert pool["AdminCreateUserConfig"] == {"AllowAdminCreateUserOnly": True}      # still no self sign-up
+    test = InfraConfig(project="corpone-agentcore-test", account_id="382632778102",
+                       portal_gateway_url="https://d1.cloudfront.net/ports/8501/gateway")
+    assert test.assistant_url == "https://d1.cloudfront.net/ports/8501/assistant"
+    assert test.login_domain == "corpone-agentcore-test-778102"

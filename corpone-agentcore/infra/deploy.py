@@ -113,6 +113,7 @@ def apply(cfg, state, only_policy_mode=None):
     out = state["outputs"]
     out["portal_api_key"] = os.environ["PORTAL_API_KEY"]
     out["openapi"] = openapi_payload(cfg)
+    out["login_domain"] = cfg.login_domain
 
     if only_policy_mode:
         ctl = session.client("bedrock-agentcore-control")
@@ -151,8 +152,23 @@ def apply(cfg, state, only_policy_mode=None):
     print("\nDeployed. Outputs (no secrets) in", state["_path"])
     for k in ("gateway_url", "runtime_arn", "memory_id", "user_pool_id", "app_client_id", "online_eval_id"):
         print(f"  {k:16} {out.get(k)}")
+    env = write_portal_env(cfg, out)
+    print(f"\nAssistant page: {cfg.assistant_url}   (hosted login: {cfg.login_url})")
+    print(f"Restart the portal with the settings in {env} to switch the page on.")
     if cfg.policy_mode == "LOG_ONLY":
         print("\nPolicy is LOG_ONLY: check decisions in CloudWatch, then run with --policy-mode ENFORCE.")
+
+
+def portal_env(cfg, out) -> dict:
+    """Settings that switch on the portal's /assistant page (no secrets)."""
+    return {"CORPONE_ASSISTANT_RUNTIME_ARN": out["runtime_arn"], "CORPONE_ASSISTANT_REGION": cfg.region,
+            "CORPONE_ASSISTANT_LOGIN_URL": cfg.login_url, "CORPONE_ASSISTANT_CLIENT_ID": out["app_client_id"]}
+
+
+def write_portal_env(cfg, out) -> Path:
+    p = BUILD / f"portal-assistant-{cfg.dashed}-{cfg.region}.env"
+    p.write_text("".join(f"{k}={v}\n" for k, v in portal_env(cfg, out).items()))
+    return p
 
 
 def kill_switch(cfg, state, on: bool):

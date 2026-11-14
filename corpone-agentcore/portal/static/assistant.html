@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CorpOne Business · Assistant</title>
+  <link rel="stylesheet" href="static/styles.css">
+  <style>
+    .chat { display: flex; flex-direction: column; gap: 10px; max-height: 58vh; overflow-y: auto; padding: 4px 2px 10px; }
+    .bubble { max-width: 82%; padding: 10px 13px; border-radius: 12px; white-space: pre-wrap; line-height: 1.45; font-size: 14.5px; }
+    .bubble.user { align-self: flex-end; background: var(--brand); color: #fff; border-bottom-right-radius: 4px; }
+    .bubble.bot { align-self: flex-start; background: #f1f3f6; border-bottom-left-radius: 4px; }
+    .bubble.err { align-self: flex-start; background: var(--err-soft); color: var(--err); }
+    .bubble .tools { display: block; margin-top: 6px; font-size: 11.5px; color: #6b7787; }
+    .composer { display: flex; gap: 10px; margin-top: 12px; }
+    .composer textarea { flex: 1; resize: vertical; min-height: 46px; }
+    .who { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .suggest { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 12px; }
+    .suggest button { font-size: 12.5px; padding: 5px 10px; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo"><span class="logo-mark">C1</span>CorpOne Business</div>
+  <span class="sub">Assistant</span>
+  <div class="right"><a href="./">Sign-up portal</a></div>
+</header>
+<main>
+  <section class="card" id="offCard" hidden>
+    <h2>Assistant not set up</h2>
+    <p class="lead">This portal isn't connected to the CorpOne assistant yet. After deploying corpone-agentcore, restart the
+      portal with the settings in <code>infra/build/portal-assistant-*.env</code>.</p>
+  </section>
+
+  <section class="card" id="signInCard" hidden>
+    <h2>CorpOne assistant</h2>
+    <p class="lead">Ask about plans, check a UEN before you sign up, and (for CorpOne operations) inventory and order status.
+      Sign in with the account CorpOne created for you.</p>
+    <div class="actions"><button id="signIn">Sign in</button></div>
+    <div class="msg hidden" id="signInMsg"></div>
+  </section>
+
+  <section class="card" id="chatCard" hidden>
+    <div class="who">
+      <div><b id="whoEmail"></b> <span class="chip info" id="whoRole"></span></div>
+      <div><button class="secondary" id="newChat">New conversation</button> <button class="link" id="signOut">Sign out</button></div>
+    </div>
+    <div class="suggest" id="suggest"></div>
+    <div class="chat" id="chat"></div>
+    <form class="composer" id="composer">
+      <textarea id="prompt" placeholder="Ask the assistant… (never type an NRIC or personal email)" maxlength="4000" required></textarea>
+      <button id="send">Send</button>
+    </form>
+    <div class="hint">Answers come from CorpOne's systems through AgentCore. Conversation history is kept for 7 days with
+      NRIC numbers and emails masked.</div>
+  </section>
+</main>
+<script src="static/assistant.js"></script>
+</body>
+</html>
