@@ -1,0 +1,67 @@
+sequenceDiagram
+  autonumber
+  actor AO as Account officer
+  participant UI as Portal UI (browser)
+  participant API as Portal API
+  participant DB as Database
+  participant ST as Contract store (S3)
+  participant EM as Email (SES / SMTP)
+  participant GW as Outbound gateway
+  participant BI as Billing API
+  participant NW as Network API
+
+  Note over AO,NW: Step 1 · Sign in
+  AO->>UI: work email
+  UI->>API: POST /api/auth/otp/request
+  API->>DB: OtpChallenge (HMAC of code)
+  API->>EM: 6-digit code
+  AO->>UI: code
+  UI->>API: POST /api/auth/otp/verify
+  API->>DB: AoSession (SHA-256 of token)
+  API-->>UI: Set-Cookie corpone_session
+
+  Note over AO,NW: Step 2 · Company
+  AO->>UI: UEN (leaves the field)
+  UI->>API: GET /api/companies/{uen}
+  API->>DB: blacklist, Company lookup
+  API-->>UI: existing / customer, name, address
+  UI->>API: POST /api/signups
+  API->>DB: Company (if new), Signup DRAFT
+  UI->>API: POST /api/signups/{id}/contract
+  API->>ST: PutObject (SSE)
+
+  Note over AO,NW: Step 3 · Account officer
+  UI->>API: GET /api/merchants
+  UI->>API: PUT /api/signups/{id}/account-officer
+  API->>DB: NRIC/FIN, blacklist, merchant checks
+
+  Note over AO,NW: Step 4 · Plan and lines
+  UI->>API: GET /api/signups/{id}/categories
+  UI->>API: PUT /api/signups/{id}/category
+  opt upload SIMs
+    UI->>API: POST /api/signups/{id}/sims
+    API->>DB: Sims AVAILABLE, pair with Numbers, PAIRED, UploadBatch
+  end
+  UI->>API: GET /api/signups/{id}/availability
+  UI->>API: POST /api/signups/{id}/cart
+  API->>DB: CartLines, SIM + number RESERVED
+
+  Note over AO,NW: Step 5 · Review and submit
+  UI->>API: POST /api/signups/{id}/submit
+  API->>DB: blacklist re-check, Company, AccountOfficer, CorporateAccount, Lines, ASSIGNED
+  API-->>UI: account number
+
+  Note over AO,NW: Step 6 · Provisioning (background task)
+  API->>GW: create billing account
+  GW->>BI: POST (Idempotency-Key account-id)
+  loop each line
+    API->>GW: activate line
+    GW->>NW: POST (Idempotency-Key line-id-network)
+    API->>GW: add subscription
+    GW->>BI: POST (Idempotency-Key line-id-billing)
+  end
+  API->>EM: eSIM QR codes to the verified AO email
+  API->>DB: Signup COMPLETED / PARTIALLY_FAILED / FAILED
+  loop until finished
+    UI->>API: GET /api/accounts/{account number}
+  end

@@ -1,0 +1,5 @@
+# One environment for every suite:  uv venv .venv && uv pip install -r requirements-dev.txt
+-r portal/requirements.txt
+-r portal/requirements-otel.txt
+-r agent/requirements.txt
+pytest>=8

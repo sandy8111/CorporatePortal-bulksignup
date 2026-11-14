@@ -1,0 +1,58 @@
+flowchart TD
+  classDef act fill:#ffffff,stroke:#1b2533,color:#1b2533
+  classDef dec fill:#fff4e5,stroke:#c77700,color:#6b3f00
+  classDef err fill:#fdecea,stroke:#c62828,color:#7f1d1d
+  classDef sys fill:#e8f0fe,stroke:#0a58ca,color:#073f91
+  classDef done fill:#e7f6ec,stroke:#1e7e34,color:#14532d
+
+  S((Start)):::done --> A1["1 · Enter work email"]:::act
+  A1 --> A2["Email 6-digit code<br/>(HMAC stored, 5 min)"]:::sys
+  A2 --> A3["Enter code"]:::act
+  A3 --> D1{"Code valid?"}:::dec
+  D1 -- "no, under 5 tries" --> A3
+  D1 -- "no, 5 tries or expired" --> A1
+  D1 -- yes --> A4["Session cookie, 8 h"]:::sys
+
+  A4 --> B1["2 · Enter UEN"]:::act
+  B1 --> D2{"UEN valid and<br/>not blacklisted?"}:::dec
+  D2 -- no --> E1["Show reason"]:::err --> B1
+  D2 -- yes --> D3{"Company on record?"}:::dec
+  D3 -- "yes" --> B2["Retrieve name and address<br/>(locked if it has an order)"]:::sys
+  D3 -- "no" --> B3["Enter name and address"]:::act
+  B2 --> B4["Validate UEN<br/>DRAFT sign-up created"]:::sys
+  B3 --> B4
+  B4 --> B5["Upload signed contract PDF"]:::act
+  B5 --> D4{"PDF, 10 MB or less?"}:::dec
+  D4 -- no --> E2["Show reason"]:::err --> B5
+  D4 -- yes --> B6["Store contract<br/>optional AI review in background"]:::sys
+
+  B6 --> C1["3 · Account officer details<br/>and merchant code"]:::act
+  C1 --> D5{"NRIC/FIN valid, not blacklisted,<br/>merchant active?"}:::dec
+  D5 -- no --> E3["Show reason"]:::err --> C1
+  D5 -- yes --> P1
+
+  P1["4 · Select SIM category"]:::act --> D6{"Allowed for this UEN?"}:::dec
+  D6 -- no --> E4["Choose another"]:::err --> P1
+  D6 -- yes --> D7{"Upload SIMs?"}:::dec
+  D7 -- yes --> P2["Upload SIM CSV<br/>auto-pair with available numbers"]:::sys --> P3
+  D7 -- no --> P3["See numbers available<br/>and lines ready"]:::sys
+  P3 --> P4["Pick plan, SIM type, quantity"]:::act
+  P4 --> D8{"Enough paired lines?"}:::dec
+  D8 -- no --> E5["Show how many are ready"]:::err --> P4
+  D8 -- yes --> P5["Lines RESERVED in cart"]:::sys
+  P5 --> D9{"Add more?"}:::dec
+  D9 -- yes --> P4
+  D9 -- no --> R1
+
+  R1["5 · Review and confirm"]:::act --> D10{"Still not blacklisted,<br/>cart complete?"}:::dec
+  D10 -- no --> E6["Show reason"]:::err --> R1
+  D10 -- yes --> R2["Submit: Company, AO, Account, Lines<br/>inventory ASSIGNED"]:::sys
+
+  R2 --> V1["6 · Provisioning in background<br/>billing account, then each line:<br/>network activate, billing subscription"]:::sys
+  V1 --> V2["Email eSIM QR codes<br/>to the verified AO email"]:::sys
+  V2 --> D11{"All lines provisioned?"}:::dec
+  D11 -- yes --> F1(("COMPLETED")):::done
+  D11 -- "some" --> F2(("PARTIALLY_FAILED")):::err
+  D11 -- none --> F3(("FAILED")):::err
+  F2 -. "back office: retry provisioning" .-> V1
+  F3 -. "back office: retry provisioning" .-> V1

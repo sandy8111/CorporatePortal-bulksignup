@@ -1,0 +1,10 @@
+*.db
+*.pyc
+.env
+.pytest_cache/
+.venv/
+__pycache__/
+data/
+evals/results/
+infra/.env
+infra/build/

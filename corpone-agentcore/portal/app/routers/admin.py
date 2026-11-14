@@ -1,0 +1,289 @@
+"""Back-office API: inventory, blacklist, merchants, provisioning retries. Requires X-Admin-Token."""
+import secrets
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.config import get_settings
+from app.db import get_db
+from pydantic import BaseModel, Field
+
+from app.gateway import inbound
+from app.gateway.outbound import gateway as outbound_gateway
+from app.models import (
+    ApiClient, BlacklistEntry, CategoryAllocation, CorporateAccount, GatewayAuditLog, InventoryStatus, Merchant,
+    OutboundCallLog, SignupStatus, SimType,
+)
+from app.schemas import BlacklistIn, CategoryAllocationIn, MerchantIn
+from app.services import admin_orders, categories, inventory, orders
+from app.validators import ValidationError, validate_category
+
+
+def require_admin(request: Request, x_admin_token: str = Header(default="")):
+    if not secrets.compare_digest(x_admin_token, get_settings().admin_token):
+        raise HTTPException(status_code=401, detail="Invalid admin token")
+    request.state.admin = True  # shown in the request log
+
+
+router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin)])
+
+
+@router.post("/inventory/sims")
+async def upload_sims(file: UploadFile = File(...), category: str | None = Form(None),
+                      sim_type: SimType | None = Form(None), db: Session = Depends(get_db)):
+    try:
+        cat = validate_category(category) if category else None
+        return inventory.upload_sims(db, await file.read(), cat, sim_type,
+                                     src=inventory.UploadSource(filename=file.filename or "", uploaded_by="admin")).as_dict()
+    except ValidationError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@router.post("/inventory/numbers")
+async def upload_numbers(file: UploadFile = File(...), category: str | None = Form(None),
+                         db: Session = Depends(get_db)):
+    try:
+        cat = validate_category(category) if category else None
+        return inventory.upload_numbers(db, await file.read(), cat,
+                                        src=inventory.UploadSource(filename=file.filename or "", uploaded_by="admin")).as_dict()
+    except ValidationError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@router.get("/inventory/pairings")
+def admin_list_pairings(category: str, status: str | None = None, q: str | None = None,
+                        limit: int = Query(200, ge=1, le=inventory.LIST_CAP), offset: int = Query(0, ge=0),
+                        db: Session = Depends(get_db)):
+    """SIM <-> number pairs with the status of both sides.
+    status: AVAILABLE|PAIRED|RESERVED|ASSIGNED (by SIM) or NUMBERS_WAITING (numbers with no SIM)."""
+    try:
+        return inventory.list_pairings(db, validate_category(category), status=status, q=q,
+                                       limit=limit, offset=offset)
+    except ValidationError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@router.get("/inventory/sim-list")
+def sim_list(category: str | None = None, sim_type: SimType | None = None, status: InventoryStatus | None = None,
+             q: str | None = None, limit: int = Query(100, ge=1, le=inventory.LIST_CAP), offset: int = Query(0, ge=0),
+             db: Session = Depends(get_db)):
+    """SIMs filtered by category, SIM type and status, with the paired number."""
+    try:
+        cat = validate_category(category) if category else None
+    except ValidationError as exc:
+        raise HTTPException(400, str(exc))
+    return inventory.sim_inventory(db, cat, sim_type, status, q, limit, offset)
+
+
+@router.get("/inventory/number-list")
+def number_list(category: str | None = None, status: InventoryStatus | None = None, q: str | None = None,
+                limit: int = Query(100, ge=1, le=inventory.LIST_CAP), offset: int = Query(0, ge=0),
+                db: Session = Depends(get_db)):
+    """Numbers filtered by category and status, with the paired SIM. AVAILABLE = no SIM yet."""
+    try:
+        cat = validate_category(category) if category else None
+    except ValidationError as exc:
+        raise HTTPException(400, str(exc))
+    return inventory.number_inventory(db, cat, status, q, limit, offset)
+
+
+@router.get("/orders")
+def list_orders(status: SignupStatus | None = None, q: str | None = None,
+                limit: int = Query(50, ge=1, le=admin_orders.PAGE_CAP), offset: int = Query(0, ge=0),
+                db: Session = Depends(get_db)):
+    """Sign-ups with lines in their cart, newest first: DRAFT = still in the cart, others = submitted."""
+    return admin_orders.list_orders(db, status, q, limit, offset)
+
+
+@router.get("/orders/{signup_id}")
+def order_detail(signup_id: str, db: Session = Depends(get_db)):
+    d = admin_orders.order_detail(db, signup_id)
+    if d is None:
+        raise HTTPException(404, "Order not found")
+    return d
+
+
+@router.get("/uploads")
+def list_uploads(kind: str | None = Query(None, pattern="^(SIMS|NUMBERS)$"),
+                 limit: int = Query(50, ge=1, le=inventory.LIST_CAP), offset: int = Query(0, ge=0),
+                 db: Session = Depends(get_db)):
+    """Uploaded SIM/number files, newest first, from the back office, the portal and the API gateway."""
+    return inventory.list_uploads(db, kind, limit, offset)
+
+
+@router.get("/uploads/{upload_id}")
+def upload_detail(upload_id: int, result: str | None = Query(None, pattern="^(ACCEPTED|REJECTED)$"),
+                  limit: int = Query(200, ge=1, le=inventory.LIST_CAP), offset: int = Query(0, ge=0),
+                  db: Session = Depends(get_db)):
+    """One uploaded file and its rows; accepted rows show the current pairing and status."""
+    d = inventory.upload_detail(db, upload_id, result, limit, offset)
+    if d is None:
+        raise HTTPException(404, "Upload not found")
+    return d
+
+
+@router.get("/inventory/summary")
+def inventory_summary(db: Session = Depends(get_db)):
+    return inventory.summary(db)
+
+
+@router.post("/inventory/pair")
+def pair(category: str, db: Session = Depends(get_db)):
+    try:
+        n = len(inventory.auto_pair(db, validate_category(category)))
+    except ValidationError as exc:
+        raise HTTPException(400, str(exc))
+    db.commit()
+    return {"paired": n}
+
+
+def _bl(e: BlacklistEntry) -> dict:
+    return {"id": e.id, "subject_type": e.subject_type.value, "id_type": e.id_type.value,
+            "id_value": e.id_value, "reason": e.reason, "start_date": e.start_date.isoformat(),
+            "end_date": e.end_date.isoformat() if e.end_date else None}
+
+
+@router.get("/blacklist")
+def list_blacklist(db: Session = Depends(get_db)):
+    return [_bl(e) for e in db.scalars(select(BlacklistEntry).order_by(BlacklistEntry.id.desc()))]
+
+
+@router.post("/blacklist", status_code=201)
+def add_blacklist(body: BlacklistIn, db: Session = Depends(get_db)):
+    e = BlacklistEntry(**body.model_dump())
+    db.add(e)
+    db.commit()
+    return _bl(e)
+
+
+@router.delete("/blacklist/{entry_id}", status_code=204)
+def delete_blacklist(entry_id: int, db: Session = Depends(get_db)):
+    e = db.get(BlacklistEntry, entry_id)
+    if not e:
+        raise HTTPException(404, "Entry not found")
+    db.delete(e)
+    db.commit()
+
+
+@router.get("/categories")
+def list_categories(uen: str | None = None, db: Session = Depends(get_db)):
+    """Every SIM category and who may use it: one company (uen) or all companies (uen null).
+    Categories with inventory but no allocation are listed with allocated=false (open to all)."""
+    rows = categories.all_categories(db)
+    if uen:
+        rows = [r for r in rows if r["uen"] == uen.strip().upper()]
+    return categories.with_counts(rows, db)
+
+
+@router.put("/categories")
+def allocate_category(body: CategoryAllocationIn, db: Session = Depends(get_db)):
+    """Set who may use a category: a company UEN, or no UEN for all companies. active=false hides it from all."""
+    a = db.scalars(select(CategoryAllocation).where(CategoryAllocation.category == body.category)).first() \
+        or CategoryAllocation(category=body.category)
+    a.uen, a.description, a.active = body.uen, body.description.strip(), body.active
+    db.add(a)
+    db.commit()
+    return categories.with_counts([e for e in categories.all_categories(db) if e["category"] == a.category], db)[0]
+
+
+@router.get("/merchants")
+def list_merchants(db: Session = Depends(get_db)):
+    return [{"code": m.code, "name": m.name, "active": m.active} for m in db.scalars(select(Merchant))]
+
+
+@router.put("/merchants")
+def upsert_merchant(body: MerchantIn, db: Session = Depends(get_db)):
+    code = body.code.strip().upper()
+    m = db.scalars(select(Merchant).where(Merchant.code == code)).first() or Merchant(code=code)
+    m.name, m.active = body.name, body.active
+    db.add(m)
+    db.commit()
+    return {"code": m.code, "name": m.name, "active": m.active}
+
+
+def _account(db: Session, account_number: str) -> CorporateAccount:
+    a = db.scalars(select(CorporateAccount).where(CorporateAccount.account_number == account_number)).first()
+    if not a:
+        raise HTTPException(404, "Account not found")
+    return a
+
+
+@router.post("/accounts/{account_number}/retry-provisioning")
+def retry_provisioning(account_number: str, db: Session = Depends(get_db)):
+    a = _account(db, account_number)
+    orders.provision(db, a.id)
+    return {"lines": {l.number.msisdn: l.status.value for l in a.lines}}
+
+
+@router.post("/accounts/{account_number}/resend-esim")
+def resend_esim(account_number: str, db: Session = Depends(get_db)):
+    a = _account(db, account_number)
+    for l in a.lines:
+        l.esim_qr_sent_at = None
+    return {"sent": orders.send_esim_qr_codes(db, a)}
+
+
+# --------------------------------------------------------------------------- API gateway management
+
+class ApiClientIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    scopes: list[str]
+    rate_limit_per_min: int | None = Field(default=None, ge=1, le=10000)
+
+
+def _client_view(c: ApiClient) -> dict:
+    return {"id": c.id, "name": c.name, "key_prefix": f"cpk_{c.key_prefix}_…", "scopes": c.scopes.split(),
+            "rate_limit_per_min": c.rate_limit_per_min, "active": c.active,
+            "created_at": c.created_at.isoformat(),
+            "last_used_at": c.last_used_at.isoformat() if c.last_used_at else None}
+
+
+@router.get("/gateway/scopes")
+def gateway_scopes():
+    return inbound.SCOPES
+
+
+@router.get("/gateway/clients")
+def list_api_clients(db: Session = Depends(get_db)):
+    return [_client_view(c) for c in db.scalars(select(ApiClient).order_by(ApiClient.id.desc()))]
+
+
+@router.post("/gateway/clients", status_code=201)
+def create_api_client(body: ApiClientIn, db: Session = Depends(get_db)):
+    try:
+        client, key = inbound.issue_key(db, body.name.strip(), body.scopes, body.rate_limit_per_min)
+    except ValidationError as exc:
+        raise HTTPException(400, str(exc))
+    return {**_client_view(client), "api_key": key, "note": "Store this key now; it cannot be shown again."}
+
+
+@router.delete("/gateway/clients/{client_id}", status_code=204)
+def revoke_api_client(client_id: int, db: Session = Depends(get_db)):
+    c = db.get(ApiClient, client_id)
+    if not c:
+        raise HTTPException(404, "API client not found")
+    c.active = False
+    db.commit()
+
+
+@router.get("/gateway/audit")
+def gateway_audit(limit: int = 100, db: Session = Depends(get_db)):
+    names = {c.id: c.name for c in db.scalars(select(ApiClient))}
+    rows = db.scalars(select(GatewayAuditLog).order_by(GatewayAuditLog.id.desc()).limit(min(limit, 1000)))
+    return [{"at": r.created_at.isoformat(), "client": names.get(r.client_id, "-"), "method": r.method,
+             "path": r.path, "status": r.status_code, "latency_ms": r.latency_ms, "ip": r.remote_ip} for r in rows]
+
+
+@router.get("/gateway/outbound")
+def outbound_status(limit: int = 100, db: Session = Depends(get_db)):
+    rows = db.scalars(select(OutboundCallLog).order_by(OutboundCallLog.id.desc()).limit(min(limit, 1000)))
+    return {"upstreams": outbound_gateway.status(),
+            "calls": [{"at": r.created_at.isoformat(), "upstream": r.upstream, "operation": r.operation,
+                       "attempt": r.attempt, "outcome": r.outcome, "latency_ms": r.latency_ms, "error": r.error}
+                      for r in rows]}
+
+
+@router.post("/gateway/outbound/reset", status_code=204)
+def outbound_reset():
+    outbound_gateway.reset()
