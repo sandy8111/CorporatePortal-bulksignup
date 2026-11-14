@@ -1,3 +1,4 @@
+import re
 from datetime import date, timedelta
 
 from tests.conftest import ADMIN, mails
@@ -210,7 +211,9 @@ def test_admin_requires_token(client):
 def test_served_with_and_without_port_proxy_prefix(client):
     for prefix in ("", "/ports/8077"):
         r = client.get(prefix + "/")
-        assert r.status_code == 200 and 'src="static/app.js"' in r.text
+        script = re.search(r'src="(static/v/[0-9a-f]{12}/app\.js)"', r.text)  # relative, so the prefix is kept
+        assert r.status_code == 200 and script
+        assert client.get(f"{prefix}/{script[1]}").status_code == 200
         assert client.get(prefix + "/static/app.js").status_code == 200
         assert client.get(prefix + "/api/plans").status_code == 200
         assert client.get(prefix + "/admin").status_code == 200
@@ -420,3 +423,19 @@ def test_numbers_available_before_pairing(client):
     assert (r["accepted"], r["paired"]) == (3, 2)
     a = client.get(f"/api/signups/{sid}/availability").json()
     assert (a["numbers_available"], a["sims_waiting"], a["ESIM"]) == (0, 1, 4)
+
+
+def test_pages_link_fingerprinted_assets_and_are_not_cached(client):
+    for page, script in (("/", "app.js"), ("/admin", "admin.js"), ("/ports/8501/", "app.js")):
+        r = client.get(page)
+        assert r.headers["cache-control"] == "no-store"
+        links = re.findall(r'(?:src|href)="(static/[^"]+)"', r.text)
+        assert any(re.fullmatch(rf"static/v/[0-9a-f]{{12}}/{script}", l) for l in links), links
+        assert any(re.fullmatch(r"static/v/[0-9a-f]{12}/styles\.css", l) for l in links), links
+        for link in links:
+            a = client.get("/" + link)
+            assert a.status_code == 200 and "immutable" in a.headers["cache-control"]
+    assert client.get("/static/v/abc/app.js").headers["cache-control"] == "no-store"  # old URL: current file, uncached
+    assert client.get("/static/v/abc/../main.py").status_code == 404
+    assert client.get("/static/v/abc/secret.txt").status_code == 404
+    assert client.get("/static/app.js").headers["cache-control"] == "no-cache"
