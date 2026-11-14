@@ -1,0 +1,208 @@
+erDiagram
+  ao_sessions {
+    integer id PK
+    varchar token_hash UK
+    varchar email
+    datetime expires_at
+    boolean revoked
+    datetime created_at
+  }
+  api_clients {
+    integer id PK
+    varchar name
+    varchar key_prefix UK
+    varchar key_hash
+    text scopes
+    integer rate_limit_per_min
+    boolean active
+    datetime created_at
+    datetime last_used_at
+  }
+  blacklist_entries {
+    integer id PK
+    enum subject_type
+    enum id_type
+    varchar id_value
+    text reason
+    date start_date
+    date end_date
+    datetime created_at
+  }
+  category_allocations {
+    integer id PK
+    varchar category UK
+    varchar uen
+    varchar description
+    boolean active
+    datetime created_at
+  }
+  companies {
+    integer id PK
+    varchar uen UK
+    varchar name
+    text address
+    varchar contract_key
+    datetime created_at
+  }
+  gateway_audit_log {
+    integer id PK
+    integer client_id
+    varchar method
+    varchar path
+    integer status_code
+    integer latency_ms
+    varchar remote_ip
+    datetime created_at
+  }
+  merchants {
+    integer id PK
+    varchar code UK
+    varchar name
+    boolean active
+  }
+  number_inventory {
+    integer id PK
+    varchar msisdn UK
+    varchar category
+    enum status
+    datetime created_at
+  }
+  otp_challenges {
+    integer id PK
+    varchar email
+    varchar code_hash
+    datetime expires_at
+    integer attempts
+    datetime consumed_at
+    datetime created_at
+  }
+  outbound_call_log {
+    integer id PK
+    varchar upstream
+    varchar operation
+    integer attempt
+    varchar outcome
+    integer latency_ms
+    text error
+    datetime created_at
+  }
+  plans {
+    integer id PK
+    varchar code UK
+    varchar name
+    numeric monthly_price
+    integer data_gb
+    text description
+    boolean active
+  }
+  upload_batches {
+    integer id PK
+    varchar kind
+    varchar filename
+    varchar source
+    varchar uploaded_by
+    varchar default_category
+    varchar signup_id
+    integer total_rows
+    integer accepted
+    integer rejected
+    integer paired
+    text rows_json
+    datetime created_at
+  }
+  account_officers {
+    integer id PK
+    integer company_id FK
+    varchar full_name
+    enum id_type
+    varchar id_number
+    varchar email
+    varchar mobile
+    varchar designation
+    datetime created_at
+  }
+  sim_inventory {
+    integer id PK
+    varchar iccid UK
+    enum sim_type
+    varchar category
+    enum status
+    varchar smdp_address
+    varchar matching_id
+    integer number_id FK,UK
+    datetime paired_at
+    datetime created_at
+  }
+  corporate_accounts {
+    integer id PK
+    varchar account_number UK
+    integer company_id FK
+    integer account_officer_id FK
+    varchar merchant_code
+    varchar billing_account_ref
+    datetime created_at
+  }
+  lines {
+    integer id PK
+    integer account_id FK
+    integer sim_id FK,UK
+    integer number_id FK,UK
+    integer plan_id FK
+    enum status
+    varchar network_ref
+    varchar billing_ref
+    text last_error
+    datetime esim_qr_sent_at
+    datetime created_at
+  }
+  signups {
+    varchar id PK
+    enum status
+    varchar uen
+    varchar company_name
+    text company_address
+    varchar category
+    varchar contract_key
+    varchar contract_filename
+    varchar ao_full_name
+    enum ao_id_type
+    varchar ao_id_number
+    varchar ao_email
+    varchar ao_mobile
+    varchar ao_designation
+    varchar merchant_code
+    varchar owner_email
+    text contract_ai_review
+    integer account_id FK
+    datetime created_at
+    datetime submitted_at
+  }
+  cart_lines {
+    integer id PK
+    varchar signup_id FK
+    integer sim_id FK,UK
+    integer number_id FK
+    integer plan_id FK
+  }
+  companies ||--o{ account_officers : "company_id"
+  number_inventory |o--o| sim_inventory : "number_id"
+  companies ||--o{ corporate_accounts : "company_id"
+  account_officers ||--o{ corporate_accounts : "account_officer_id"
+  corporate_accounts ||--o{ lines : "account_id"
+  sim_inventory ||--o| lines : "sim_id"
+  number_inventory ||--o| lines : "number_id"
+  plans ||--o{ lines : "plan_id"
+  corporate_accounts |o--o{ signups : "account_id"
+  signups ||--o{ cart_lines : "signup_id"
+  sim_inventory ||--o| cart_lines : "sim_id"
+  number_inventory ||--o{ cart_lines : "number_id"
+  plans ||--o{ cart_lines : "plan_id"
+  category_allocations |o..o{ signups : "SIM category chosen (logical)"
+  category_allocations |o..o{ sim_inventory : "category (logical)"
+  category_allocations |o..o{ number_inventory : "category (logical)"
+  companies |o..o{ category_allocations : "allocated to (logical)"
+  companies |o..o{ signups : "company (logical)"
+  merchants |o..o{ signups : "merchant (logical)"
+  merchants |o..o{ corporate_accounts : "merchant (logical)"
+  signups |o..o{ upload_batches : "portal upload (logical)"
+  api_clients |o..o{ gateway_audit_log : "API client (logical)"
