@@ -125,6 +125,25 @@ class MobileNumber(Base):
     sim: Mapped["Sim | None"] = relationship(back_populates="number")
 
 
+class UploadBatch(Base):
+    """One uploaded SIM or number file and the outcome of every row in it."""
+    __tablename__ = "upload_batches"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(10))                # SIMS | NUMBERS
+    filename: Mapped[str] = mapped_column(String(255), default="")
+    source: Mapped[str] = mapped_column(String(20))              # BACK_OFFICE | PORTAL | GATEWAY
+    uploaded_by: Mapped[str] = mapped_column(String(254), default="")
+    default_category: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    signup_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    total_rows: Mapped[int] = mapped_column(default=0)
+    accepted: Mapped[int] = mapped_column(default=0)
+    rejected: Mapped[int] = mapped_column(default=0)
+    paired: Mapped[int] = mapped_column(default=0)
+    # JSON list of {"row", "value", "result": "ACCEPTED"|"REJECTED", "error", "category"}
+    rows_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
+
+
 class CategoryAllocation(Base):
     """Who may use a SIM inventory category, e.g. ACME-SIM-001.
 

@@ -1,6 +1,7 @@
 """SIM / number inventory upload, auto-pairing and cart allocation."""
 import csv
 import io
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -8,7 +9,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
-    CartLine, InventoryStatus, MobileNumber, Plan, Signup, Sim, SimType,
+    CartLine, InventoryStatus, MobileNumber, Plan, Signup, Sim, SimType, UploadBatch,
 )
 from app.validators import ValidationError, validate_category, validate_iccid, validate_msisdn
 
@@ -23,6 +24,10 @@ class UploadReport:
     pairs: list[dict] = field(default_factory=list)   # pairs that include a SIM/number from this upload
     items: list[dict] = field(default_factory=list)   # accepted rows and their pairing outcome
     paired_existing: int = 0                          # older waiting SIMs/numbers paired as a side effect
+    accepted_rows: list[tuple[int, str, str]] = field(default_factory=list)  # (row, value, category)
+    total_rows: int = 0
+    upload_id: int | None = None
+    filename: str = ""
 
     @property
     def paired(self) -> int:
@@ -32,7 +37,32 @@ class UploadReport:
         return {"accepted": self.accepted, "rejected_count": len(self.rejected),
                 "rejected": self.rejected[:LIST_CAP], "paired": self.paired,
                 "pairs": self.pairs[:LIST_CAP], "items": self.items[:LIST_CAP],
-                "paired_existing": self.paired_existing}
+                "paired_existing": self.paired_existing, "upload_id": self.upload_id, "filename": self.filename}
+
+
+@dataclass
+class UploadSource:
+    """Who uploaded a file, for the upload history."""
+    filename: str = ""
+    source: str = "BACK_OFFICE"   # BACK_OFFICE | PORTAL | GATEWAY
+    uploaded_by: str = ""
+    signup_id: str | None = None
+
+
+def _record_batch(db: Session, report: UploadReport, kind: str, src: UploadSource | None,
+                  default_category: str | None) -> None:
+    src = src or UploadSource()
+    rows = [{"row": r, "value": v, "result": "ACCEPTED", "error": None, "category": c} for r, v, c in report.accepted_rows]
+    rows += [{"row": x["row"], "value": x["value"], "result": "REJECTED", "error": x["error"], "category": None}
+             for x in report.rejected]
+    rows.sort(key=lambda x: x["row"])
+    batch = UploadBatch(kind=kind, filename=(src.filename or "")[:255], source=src.source,
+                        uploaded_by=src.uploaded_by[:254], default_category=default_category, signup_id=src.signup_id,
+                        total_rows=report.total_rows, accepted=report.accepted, rejected=len(report.rejected),
+                        paired=report.paired, rows_json=json.dumps(rows))
+    db.add(batch)
+    db.flush()
+    report.upload_id, report.filename = batch.id, batch.filename
 
 
 _STATUS_TEXT = {
@@ -95,12 +125,13 @@ def _rows(raw: bytes, key_column: str) -> list[dict]:
 
 
 def upload_sims(db: Session, raw: bytes, default_category: str | None,
-                default_sim_type: SimType | None, force_category: bool = False) -> UploadReport:
+                default_sim_type: SimType | None, force_category: bool = False,
+                src: UploadSource | None = None) -> UploadReport:
     """Load SIMs into inventory. With force_category, every row must belong to default_category."""
     rows = _rows(raw, "iccid")
     if len(rows) > MAX_ROWS:
         raise ValidationError(f"File has more than {MAX_ROWS} rows")
-    report = UploadReport()
+    report = UploadReport(total_rows=len(rows))
     existing = {s.iccid: s for s in db.scalars(
         select(Sim).options(selectinload(Sim.number))
         .where(Sim.iccid.in_([r.get("iccid", "").strip() for r in rows])))}
@@ -133,21 +164,24 @@ def upload_sims(db: Session, raw: bytes, default_category: str | None,
         db.add(sim)
         new_sims.append(sim)
         report.accepted += 1
+        report.accepted_rows.append((line_no, iccid, category))
 
     db.flush()
     _pair_categories(db, report, categories, "iccid", seen)
     paired_to = {p["iccid"]: p["msisdn"] for p in report.pairs}
     report.items = [{"iccid": s.iccid, "sim_type": s.sim_type.value, "category": s.category,
                      "msisdn": paired_to.get(s.iccid)} for s in new_sims]
+    _record_batch(db, report, "SIMS", src, default_category)
     db.commit()
     return report
 
 
-def upload_numbers(db: Session, raw: bytes, default_category: str | None) -> UploadReport:
+def upload_numbers(db: Session, raw: bytes, default_category: str | None,
+                   src: UploadSource | None = None) -> UploadReport:
     rows = _rows(raw, "msisdn")
     if len(rows) > MAX_ROWS:
         raise ValidationError(f"File has more than {MAX_ROWS} rows")
-    report = UploadReport()
+    report = UploadReport(total_rows=len(rows))
     seen: set[str] = set()
     categories: set[str] = set()
     parsed: list[tuple[int, dict, str | None, str | None]] = []
@@ -180,12 +214,14 @@ def upload_numbers(db: Session, raw: bytes, default_category: str | None) -> Upl
         db.add(num)
         new_numbers.append(num)
         report.accepted += 1
+        report.accepted_rows.append((line_no, msisdn, category))
 
     db.flush()
     _pair_categories(db, report, categories, "msisdn", seen)
     paired_to = {p["msisdn"]: p["iccid"] for p in report.pairs}
     report.items = [{"msisdn": n.msisdn, "category": n.category, "iccid": paired_to.get(n.msisdn)}
                     for n in new_numbers]
+    _record_batch(db, report, "NUMBERS", src, default_category)
     db.commit()
     return report
 
@@ -291,6 +327,101 @@ def list_pairings(db: Session, category: str, status: str | None = None, q: str 
         counts = {st.value: sim_counts.get(st, 0) for st in InventoryStatus} | {"NUMBERS_WAITING": waiting}
     return {"category": category, "total": total, "limit": limit, "offset": offset,
             "counts": counts, "pairs": pairs}
+
+
+def sim_inventory(db: Session, category: str | None = None, sim_type: SimType | None = None,
+                  status: InventoryStatus | None = None, q: str | None = None,
+                  limit: int = 100, offset: int = 0) -> dict:
+    """Back office SIM list. Counts per status use the same filters except status."""
+    base = select(Sim)
+    if category:
+        base = base.where(Sim.category == category)
+    if sim_type:
+        base = base.where(Sim.sim_type == sim_type)
+    if q:
+        like = _like(q)
+        base = base.outerjoin(MobileNumber, Sim.number_id == MobileNumber.id).where(
+            Sim.iccid.like(like, escape="\\") | MobileNumber.msisdn.like(like, escape="\\"))
+    counts = _status_counts(db, base, Sim)
+    stmt = base.where(Sim.status == status) if status else base
+    total = db.scalar(select(func.count()).select_from(stmt.subquery()))
+    rows = db.scalars(stmt.options(selectinload(Sim.number)).order_by(Sim.id.desc())
+                      .limit(max(1, min(limit, LIST_CAP))).offset(max(0, offset))).all()
+    return {"total": total, "counts": counts, "sims": [{
+        "iccid": x.iccid, "sim_type": x.sim_type.value, "category": x.category, "status": x.status.value,
+        "msisdn": x.number.msisdn if x.number else None,
+        "number_status": x.number.status.value if x.number else None,
+        "uploaded_at": x.created_at.isoformat(), "paired_at": x.paired_at.isoformat() if x.paired_at else None,
+    } for x in rows]}
+
+
+def number_inventory(db: Session, category: str | None = None, status: InventoryStatus | None = None,
+                     q: str | None = None, limit: int = 100, offset: int = 0) -> dict:
+    """Back office number list with the paired SIM, if any."""
+    base = select(MobileNumber)
+    if category:
+        base = base.where(MobileNumber.category == category)
+    if q:
+        like = _like(q)
+        base = base.outerjoin(Sim, Sim.number_id == MobileNumber.id).where(
+            MobileNumber.msisdn.like(like, escape="\\") | Sim.iccid.like(like, escape="\\"))
+    counts = _status_counts(db, base, MobileNumber)
+    stmt = base.where(MobileNumber.status == status) if status else base
+    total = db.scalar(select(func.count()).select_from(stmt.subquery()))
+    rows = db.scalars(stmt.options(selectinload(MobileNumber.sim)).order_by(MobileNumber.id.desc())
+                      .limit(max(1, min(limit, LIST_CAP))).offset(max(0, offset))).all()
+    return {"total": total, "counts": counts, "numbers": [{
+        "msisdn": x.msisdn, "category": x.category, "status": x.status.value,
+        "iccid": x.sim.iccid if x.sim else None, "sim_type": x.sim.sim_type.value if x.sim else None,
+        "sim_status": x.sim.status.value if x.sim else None, "uploaded_at": x.created_at.isoformat(),
+    } for x in rows]}
+
+
+def _status_counts(db: Session, base, model) -> dict:
+    sub = base.with_only_columns(model.id, model.status).subquery()
+    found = dict(db.execute(select(sub.c.status, func.count()).group_by(sub.c.status)).all())
+    return {st.value: found.get(st, 0) for st in InventoryStatus}
+
+
+def _batch_view(b: UploadBatch) -> dict:
+    return {"id": b.id, "kind": b.kind, "filename": b.filename, "source": b.source, "uploaded_by": b.uploaded_by,
+            "default_category": b.default_category, "signup_id": b.signup_id, "total_rows": b.total_rows,
+            "accepted": b.accepted, "rejected": b.rejected, "paired": b.paired,
+            "uploaded_at": b.created_at.isoformat()}
+
+
+def list_uploads(db: Session, kind: str | None = None, limit: int = 50, offset: int = 0) -> dict:
+    stmt = select(UploadBatch)
+    if kind:
+        stmt = stmt.where(UploadBatch.kind == kind)
+    total = db.scalar(select(func.count()).select_from(stmt.subquery()))
+    rows = db.scalars(stmt.order_by(UploadBatch.id.desc()).limit(max(1, min(limit, LIST_CAP))).offset(max(0, offset)))
+    return {"total": total, "uploads": [_batch_view(b) for b in rows]}
+
+
+def upload_detail(db: Session, upload_id: int, result: str | None = None, limit: int = 200, offset: int = 0) -> dict | None:
+    """One upload and its rows. Accepted rows show the SIM/number's current pairing and status."""
+    b = db.get(UploadBatch, upload_id)
+    if b is None:
+        return None
+    rows = json.loads(b.rows_json or "[]")
+    if result:
+        rows = [r for r in rows if r["result"] == result]
+    page = rows[max(0, offset):max(0, offset) + max(1, min(limit, LIST_CAP))]
+    values = [r["value"] for r in page if r["result"] == "ACCEPTED"]
+    if b.kind == "SIMS":
+        live = {x.iccid: x for x in db.scalars(select(Sim).options(selectinload(Sim.number)).where(Sim.iccid.in_(values)))}
+        for r in page:
+            x = live.get(r["value"]) if r["result"] == "ACCEPTED" else None
+            r |= {"sim_type": x.sim_type.value if x else None, "status": x.status.value if x else None,
+                  "paired_with": x.number.msisdn if x and x.number else None}
+    else:
+        live = {x.msisdn: x for x in db.scalars(
+            select(MobileNumber).options(selectinload(MobileNumber.sim)).where(MobileNumber.msisdn.in_(values)))}
+        for r in page:
+            x = live.get(r["value"]) if r["result"] == "ACCEPTED" else None
+            r |= {"status": x.status.value if x else None, "paired_with": x.sim.iccid if x and x.sim else None}
+    return _batch_view(b) | {"rows_total": len(rows), "offset": offset, "rows": page}
 
 
 def free_number_count(db: Session, category: str) -> int:

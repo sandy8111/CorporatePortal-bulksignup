@@ -12,7 +12,8 @@ from pydantic import BaseModel, Field
 from app.gateway import inbound
 from app.gateway.outbound import gateway as outbound_gateway
 from app.models import (
-    ApiClient, BlacklistEntry, CategoryAllocation, CorporateAccount, GatewayAuditLog, Merchant, OutboundCallLog, SimType,
+    ApiClient, BlacklistEntry, CategoryAllocation, CorporateAccount, GatewayAuditLog, InventoryStatus, Merchant,
+    OutboundCallLog, SimType,
 )
 from app.schemas import BlacklistIn, CategoryAllocationIn, MerchantIn
 from app.services import categories, inventory, orders
@@ -33,7 +34,8 @@ async def upload_sims(file: UploadFile = File(...), category: str | None = Form(
                       sim_type: SimType | None = Form(None), db: Session = Depends(get_db)):
     try:
         cat = validate_category(category) if category else None
-        return inventory.upload_sims(db, await file.read(), cat, sim_type).as_dict()
+        return inventory.upload_sims(db, await file.read(), cat, sim_type,
+                                     src=inventory.UploadSource(filename=file.filename or "", uploaded_by="admin")).as_dict()
     except ValidationError as exc:
         raise HTTPException(400, str(exc))
 
@@ -43,7 +45,8 @@ async def upload_numbers(file: UploadFile = File(...), category: str | None = Fo
                          db: Session = Depends(get_db)):
     try:
         cat = validate_category(category) if category else None
-        return inventory.upload_numbers(db, await file.read(), cat).as_dict()
+        return inventory.upload_numbers(db, await file.read(), cat,
+                                        src=inventory.UploadSource(filename=file.filename or "", uploaded_by="admin")).as_dict()
     except ValidationError as exc:
         raise HTTPException(400, str(exc))
 
@@ -59,6 +62,49 @@ def admin_list_pairings(category: str, status: str | None = None, q: str | None 
                                        limit=limit, offset=offset)
     except ValidationError as exc:
         raise HTTPException(400, str(exc))
+
+
+@router.get("/inventory/sim-list")
+def sim_list(category: str | None = None, sim_type: SimType | None = None, status: InventoryStatus | None = None,
+             q: str | None = None, limit: int = Query(100, ge=1, le=inventory.LIST_CAP), offset: int = Query(0, ge=0),
+             db: Session = Depends(get_db)):
+    """SIMs filtered by category, SIM type and status, with the paired number."""
+    try:
+        cat = validate_category(category) if category else None
+    except ValidationError as exc:
+        raise HTTPException(400, str(exc))
+    return inventory.sim_inventory(db, cat, sim_type, status, q, limit, offset)
+
+
+@router.get("/inventory/number-list")
+def number_list(category: str | None = None, status: InventoryStatus | None = None, q: str | None = None,
+                limit: int = Query(100, ge=1, le=inventory.LIST_CAP), offset: int = Query(0, ge=0),
+                db: Session = Depends(get_db)):
+    """Numbers filtered by category and status, with the paired SIM. AVAILABLE = no SIM yet."""
+    try:
+        cat = validate_category(category) if category else None
+    except ValidationError as exc:
+        raise HTTPException(400, str(exc))
+    return inventory.number_inventory(db, cat, status, q, limit, offset)
+
+
+@router.get("/uploads")
+def list_uploads(kind: str | None = Query(None, pattern="^(SIMS|NUMBERS)$"),
+                 limit: int = Query(50, ge=1, le=inventory.LIST_CAP), offset: int = Query(0, ge=0),
+                 db: Session = Depends(get_db)):
+    """Uploaded SIM/number files, newest first, from the back office, the portal and the API gateway."""
+    return inventory.list_uploads(db, kind, limit, offset)
+
+
+@router.get("/uploads/{upload_id}")
+def upload_detail(upload_id: int, result: str | None = Query(None, pattern="^(ACCEPTED|REJECTED)$"),
+                  limit: int = Query(200, ge=1, le=inventory.LIST_CAP), offset: int = Query(0, ge=0),
+                  db: Session = Depends(get_db)):
+    """One uploaded file and its rows; accepted rows show the current pairing and status."""
+    d = inventory.upload_detail(db, upload_id, result, limit, offset)
+    if d is None:
+        raise HTTPException(404, "Upload not found")
+    return d
 
 
 @router.get("/inventory/summary")

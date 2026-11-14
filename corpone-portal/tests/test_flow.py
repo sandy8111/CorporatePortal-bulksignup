@@ -429,7 +429,7 @@ def test_pages_link_fingerprinted_assets_and_are_not_cached(client):
     for page, script in (("/", "app.js"), ("/admin", "admin.js"), ("/ports/8501/", "app.js")):
         r = client.get(page)
         assert r.headers["cache-control"] == "no-store"
-        links = re.findall(r'(?:src|href)="(static/[^"]+)"', r.text)
+        links = re.findall(r'(?:src|href)="(static/[^"]+\.(?:js|css))"', r.text)
         assert any(re.fullmatch(rf"static/v/[0-9a-f]{{12}}/{script}", l) for l in links), links
         assert any(re.fullmatch(r"static/v/[0-9a-f]{12}/styles\.css", l) for l in links), links
         for link in links:
@@ -471,3 +471,72 @@ def test_category_for_all_companies(client):
     rows = {r["category"]: r for r in client.get("/api/admin/categories", headers=ADMIN).json()}
     assert rows["POOL-SHARED"]["scope"] == "ALL" and rows["POOL-SHARED"]["allocated"]
     assert rows["POOL-OFF"]["active"] is False and rows["OTHER-SIM-001"]["uen"] == "53312345C"
+
+
+def test_api_responses_are_never_cached(client, anon):
+    for c, path, headers in ((client, "/api/signups", {}), (client, "/ports/8501/api/signups", {}),
+                             (client, "/api/admin/categories", ADMIN), (anon, "/api/admin/categories", {}),
+                             (anon, "/api/auth/me", {}), (anon, "/gateway/v1/plans", {})):
+        r = c.get(path, headers=headers)
+        assert r.headers["cache-control"] == "no-store, private", (path, r.status_code)
+    assert client.put("/api/admin/categories", headers=ADMIN, json={"category": "X-1"}).headers["cache-control"] == "no-store, private"
+    assert client.get("/api/plans?_ts=123").status_code == 200  # cache-busting param is ignored
+    assert "no-store" not in client.get("/static/app.js").headers["cache-control"]  # static assets keep their own policy
+
+
+def test_upload_history_lists_files_and_rows(client):
+    sims = f"iccid,sim_type,category\n{iccid(1)},ESIM,ACME\n123,ESIM,ACME\n{iccid(2)},PHYSICAL,ACME\n"
+    r = client.post("/api/admin/inventory/sims", headers=ADMIN, files={"file": ("batch-01.csv", sims)}).json()
+    assert r["filename"] == "batch-01.csv" and r["upload_id"]
+    client.post("/api/admin/inventory/numbers", headers=ADMIN, data={"category": "ACME"},
+                files={"file": ("numbers-a.csv", "81000001\n")})
+    sid = start(client)
+    client.post(f"/api/signups/{sid}/sims", data={"sim_type": "ESIM"}, files={"file": ("from-portal.csv", f"{iccid(3)}\n")})
+
+    ups = client.get("/api/admin/uploads", headers=ADMIN).json()
+    assert [u["filename"] for u in ups["uploads"]] == ["from-portal.csv", "numbers-a.csv", "batch-01.csv"]
+    portal, nums, sims_up = ups["uploads"]
+    assert (portal["source"], portal["uploaded_by"], portal["signup_id"]) == ("PORTAL", "meiling@acme.sg", sid)
+    assert (sims_up["source"], sims_up["kind"], sims_up["total_rows"], sims_up["accepted"], sims_up["rejected"]) == \
+        ("BACK_OFFICE", "SIMS", 3, 2, 1)
+    assert nums["kind"] == "NUMBERS" and nums["paired"] == 1
+    assert [u["filename"] for u in client.get("/api/admin/uploads?kind=NUMBERS", headers=ADMIN).json()["uploads"]] == ["numbers-a.csv"]
+
+    d = client.get(f"/api/admin/uploads/{sims_up['id']}", headers=ADMIN).json()
+    assert [(x["row"], x["value"], x["result"]) for x in d["rows"]] == [
+        (1, iccid(1), "ACCEPTED"), (2, "123", "REJECTED"), (3, iccid(2), "ACCEPTED")]
+    first = d["rows"][0]
+    assert first["status"] == "PAIRED" and first["paired_with"] == "81000001"  # live pairing, made by the later number file
+    assert "18 to 20 digits" in d["rows"][1]["error"]
+    rej = client.get(f"/api/admin/uploads/{sims_up['id']}?result=REJECTED", headers=ADMIN).json()
+    assert rej["rows_total"] == 1 and rej["rows"][0]["value"] == "123"
+    assert client.get("/api/admin/uploads/99999", headers=ADMIN).status_code == 404
+    assert client.get("/api/admin/uploads").status_code == 401
+
+
+def test_admin_sim_and_number_lists(client):
+    load_inventory(client, category="ACME", esim=2, physical=1, numbers=2)   # 2 paired, 1 physical waiting
+    load_inventory(client, category="BETA", esim=0, physical=0, numbers=0)
+    client.post("/api/admin/inventory/numbers", headers=ADMIN, files={"file": ("n.csv", "msisdn,category\n88000001,BETA\n")})
+    sid = start(client)
+    client.post(f"/api/signups/{sid}/cart", json={"plan_code": "RAY-8", "sim_type": "ESIM", "quantity": 1})
+
+    d = client.get("/api/admin/inventory/sim-list", headers=ADMIN).json()
+    assert d["total"] == 3 and d["counts"] == {"AVAILABLE": 1, "PAIRED": 1, "RESERVED": 1, "ASSIGNED": 0}
+    esim = client.get("/api/admin/inventory/sim-list?sim_type=ESIM&category=acme", headers=ADMIN).json()
+    assert esim["total"] == 2 and {x["status"] for x in esim["sims"]} == {"PAIRED", "RESERVED"}
+    reserved = client.get("/api/admin/inventory/sim-list?status=RESERVED", headers=ADMIN).json()["sims"]
+    assert len(reserved) == 1 and reserved[0]["msisdn"] and reserved[0]["number_status"] == "RESERVED"
+    waiting = client.get("/api/admin/inventory/sim-list?status=AVAILABLE&sim_type=PHYSICAL", headers=ADMIN).json()["sims"]
+    assert waiting[0]["msisdn"] is None and waiting[0]["category"] == "ACME"
+
+    n = client.get("/api/admin/inventory/number-list?status=AVAILABLE", headers=ADMIN).json()
+    assert [(x["msisdn"], x["category"], x["iccid"]) for x in n["numbers"]] == [("88000001", "BETA", None)]
+    n = client.get("/api/admin/inventory/number-list?category=ACME", headers=ADMIN).json()
+    assert n["counts"] == {"AVAILABLE": 0, "PAIRED": 1, "RESERVED": 1, "ASSIGNED": 0}
+    assert all(x["iccid"] and x["sim_type"] == "ESIM" for x in n["numbers"])
+    assert client.get(f"/api/admin/inventory/number-list?q={iccid(0)}", headers=ADMIN).json()["total"] == 1
+
+    for bad in ("sim-list?status=NOPE", "sim-list?sim_type=X", "sim-list?category=bad!", "number-list?limit=0"):
+        assert client.get(f"/api/admin/inventory/{bad}", headers=ADMIN).status_code in (400, 422), bad
+    assert client.get("/api/admin/inventory/sim-list").status_code == 401

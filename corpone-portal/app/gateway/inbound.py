@@ -157,18 +157,23 @@ def inv_summary(_=Depends(require("inventory:read")), db: Session = Depends(get_
 
 
 @gateway_app.post("/v1/inventory/sims", tags=["inventory"], summary="Upload SIM CSV (auto-pairs)")
-async def inv_sims(file: UploadFile = File(...), category: str | None = Form(None),
+async def inv_sims(request: Request, file: UploadFile = File(...), category: str | None = Form(None),
                    sim_type: SimType | None = Form(None),
                    _=Depends(require("inventory:write")), db: Session = Depends(get_db)):
     return inventory.upload_sims(db, await file.read(), validate_category(category) if category else None,
-                                 sim_type).as_dict()
+                                 sim_type, src=_gateway_source(request, file)).as_dict()
 
 
 @gateway_app.post("/v1/inventory/numbers", tags=["inventory"], summary="Upload number CSV (auto-pairs)")
-async def inv_numbers(file: UploadFile = File(...), category: str | None = Form(None),
+async def inv_numbers(request: Request, file: UploadFile = File(...), category: str | None = Form(None),
                       _=Depends(require("inventory:write")), db: Session = Depends(get_db)):
-    return inventory.upload_numbers(db, await file.read(),
-                                    validate_category(category) if category else None).as_dict()
+    return inventory.upload_numbers(db, await file.read(), validate_category(category) if category else None,
+                                    src=_gateway_source(request, file)).as_dict()
+
+
+def _gateway_source(request: Request, file: UploadFile) -> inventory.UploadSource:
+    return inventory.UploadSource(filename=file.filename or "", source="GATEWAY",
+                                  uploaded_by=f"api-client:{getattr(request.state, 'client_id', '?')}")
 
 
 @gateway_app.get("/v1/accounts/{account_number}", tags=["accounts"], summary="Account and line provisioning status")

@@ -52,7 +52,7 @@ class RequestLog:
             await self.app(scope, receive, send_with_id)
         finally:
             ms = (time.perf_counter() - start) * 1000
-            query = scope.get("query_string", b"").decode("latin-1")
+            query = re.sub(r"(^|&)_ts=\d+", "", scope.get("query_string", b"").decode("latin-1")).lstrip("&")
             path = scope["path"] + (f"?{query}" if query else "")
             level = logging.ERROR if status >= 500 else logging.WARNING if status >= 400 else logging.INFO
             log.log(level, "%s %s -> %s %.0fms by=%s id=%s",

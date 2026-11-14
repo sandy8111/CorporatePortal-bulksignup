@@ -8,6 +8,8 @@ async function api(method, path, body) {
   const opts = { method, headers: {} };
   if (body instanceof FormData) opts.body = body;
   else if (body !== undefined) { opts.body = JSON.stringify(body); opts.headers["Content-Type"] = "application/json"; }
+  opts.cache = "no-store";  // never reuse a cached API response
+  if (method === "GET") path += (path.includes("?") ? "&" : "?") + "_ts=" + Date.now();  // skip copies a CDN already holds
   const res = await fetch(path, opts);
   const data = res.status === 204 ? null : await res.json().catch(() => ({}));
   if (res.status === 401 && !path.startsWith("api/auth/")) { signedOut(); throw new Error("Please sign in again"); }

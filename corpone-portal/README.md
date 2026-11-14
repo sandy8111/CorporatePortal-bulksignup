@@ -132,6 +132,8 @@ The portal compares the results with what the AO entered and shows them at the r
 
 - **SIM upload** CSV: `iccid,sim_type,category[,smdp_address,matching_id]`. ICCID must be numeric,
   18–20 digits. `sim_type` is `ESIM` or `PHYSICAL`.
+- Templates: `static/templates/sim_inventory_template.csv` and `number_inventory_template.csv`
+  (also linked as "download template" under each upload form in the back office).
 - **Number upload** CSV: `msisdn,category`. Must be 8 digits starting with 8 or 9 (`+65` prefix is
   stripped).
 - A header row is optional. Without one, the file is one value per line and the form's default
@@ -155,6 +157,15 @@ The portal compares the results with what the AO entered and shows them at the r
 - The upload result lists every SIM ↔ number pair it made. A SIM or number that was already
   uploaded is reported with its current pairing, but only when it is in the same category as the
   row. Otherwise the result just says "already uploaded under another category".
+- **Uploaded files** (back office, `GET /api/admin/uploads`, `GET /api/admin/uploads/{id}`): every
+  SIM or number file uploaded from the back office, the portal or the API gateway is listed with
+  its file name, time, who uploaded it and the accepted/paired/rejected counts. **View** shows
+  every row: rejected rows with the reason, accepted rows with the SIM or number's current
+  pairing and status.
+- **Inventory lists** (back office): **List SIMs** filters by SIM category, SIM type and SIM status
+  (`GET /api/admin/inventory/sim-list`); **List numbers** filters by number status
+  (`GET /api/admin/inventory/number-list`). Both show the paired SIM or number, a count per status
+  (click a count to filter by it), optional ICCID/number search, and 100 rows per page.
 - **Pairing view.** The back office card "SIM ↔ number pairing"
   (`GET /api/admin/inventory/pairings?category=…`) lists each SIM with its MSISDN and the status
   of both sides. You can filter by status and see numbers still waiting for a SIM

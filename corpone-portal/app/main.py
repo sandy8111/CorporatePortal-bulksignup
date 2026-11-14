@@ -33,6 +33,29 @@ class PortProxyPrefix:
                 scope = dict(scope, root_path=m.group(0))
         await self.app(scope, receive, send)
 STATIC = Path(__file__).resolve().parent.parent / "static"
+_API_PATH = re.compile(r"^(/ports/\d+)?/(api|gateway)(/|$)")
+
+
+class NoStoreApi:
+    """API responses are per caller (cookie, admin token, API key) and must never be stored by a browser
+    or shared cache. The CloudFront in front of the dev proxy keys its cache by URL only, so a cached
+    response could otherwise be served to another user, or to someone without credentials."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not _API_PATH.match(scope["path"]):
+            return await self.app(scope, receive, send)
+
+        async def send_no_store(message):
+            if message["type"] == "http.response.start":
+                headers = [(k, v) for k, v in message.get("headers", []) if k.lower() not in (b"cache-control", b"expires")]
+                message["headers"] = headers + [(b"cache-control", b"no-store, private"), (b"pragma", b"no-cache"),
+                                                (b"expires", b"0")]
+            await send(message)
+
+        await self.app(scope, receive, send_no_store)
 # Scripts and styles are linked as static/v/<content hash>/<name>, so every change gets a new URL and
 # no browser or CDN (e.g. CloudFront in front of the dev proxy) can pair a new page with an old script.
 VERSIONED = ("app.js", "admin.js", "styles.css")
@@ -69,6 +92,7 @@ def create_app() -> FastAPI:
             "CORPONE_DEV_FIXED_OTP is set but CORPONE_DEV_FIXED_OTP_EMAIL is not, so test mode is off.")
     app = FastAPI(title="CorpOne Corporate Bulk Line Portal", version="1.0.0")
     app.add_middleware(PortProxyPrefix)
+    app.add_middleware(NoStoreApi)
     if get_settings().request_log:
         app.add_middleware(RequestLog)  # added last = outermost, so it times the whole request
     Base.metadata.create_all(engine)

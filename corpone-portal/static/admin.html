@@ -37,30 +37,106 @@
   <section class="card">
     <h2>Upload SIM inventory</h2>
     <form id="simForm" class="row">
-      <div><label>CSV: iccid,sim_type,category[,smdp_address,matching_id]</label><input type="file" name="file" accept=".csv,.txt" required></div>
+      <div><label>SIM file (CSV)</label><input type="file" name="file" accept=".csv,.txt" required></div>
       <div><label>Default category</label><input name="category" placeholder="used when the row has none"></div>
       <div><label>Default SIM type</label><select name="sim_type"><option value="">(from file)</option><option value="ESIM">eSIM</option><option value="PHYSICAL">Physical</option></select></div>
       <div style="flex:0"><button>Upload</button></div>
     </form>
-    <div class="hint">ICCID must be numeric, 18–20 digits. SIMs auto-pair with available numbers in the same category.</div>
     <div class="msg hidden" id="msgSim"></div>
+    <details class="format">
+      <summary>CSV format · <a href="static/templates/sim_inventory_template.csv" download>download template</a></summary>
+      <table>
+        <thead><tr><th>Column</th><th>Required</th><th>Rule</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">iccid</td><td>Yes</td><td>Numbers only, 18–20 digits</td></tr>
+          <tr><td class="mono">sim_type</td><td>Yes, or set "Default SIM type"</td><td><span class="mono">ESIM</span> or <span class="mono">PHYSICAL</span></td></tr>
+          <tr><td class="mono">category</td><td>Yes, or set "Default category"</td><td>Letters, digits, - or _, up to 40, e.g. <span class="mono">ACME-SIM-001</span></td></tr>
+          <tr><td class="mono">smdp_address</td><td>No</td><td>eSIM only: SM-DP+ server address</td></tr>
+          <tr><td class="mono">matching_id</td><td>No</td><td>eSIM only: activation code matching ID</td></tr>
+        </tbody>
+      </table>
+      <pre class="mono">iccid,sim_type,category,smdp_address,matching_id
+8965010000000100000,ESIM,ACME-SIM-001,smdp.example.com,ABCD-1234-EFGH-5678
+8965010000000100001,PHYSICAL,ACME-SIM-001,,</pre>
+      <div class="hint">The header row is optional. Without it, put one ICCID per line and set the defaults above. New SIMs pair automatically with available numbers in the same category. Rows that fail are listed with a reason; the rest are loaded.</div>
+    </details>
   </section>
 
   <section class="card">
     <h2>Upload number inventory</h2>
     <form id="numForm" class="row">
-      <div><label>CSV: msisdn,category</label><input type="file" name="file" accept=".csv,.txt" required></div>
+      <div><label>Number file (CSV)</label><input type="file" name="file" accept=".csv,.txt" required></div>
       <div><label>Default category</label><input name="category" placeholder="used when the row has none"></div>
       <div style="flex:0"><button>Upload</button></div>
     </form>
-    <div class="hint">Numbers must be 8 digits starting with 8 or 9.</div>
     <div class="msg hidden" id="msgNum"></div>
+    <details class="format">
+      <summary>CSV format · <a href="static/templates/number_inventory_template.csv" download>download template</a></summary>
+      <table>
+        <thead><tr><th>Column</th><th>Required</th><th>Rule</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">msisdn</td><td>Yes</td><td>8 digits starting with 8 or 9; a <span class="mono">+65</span> prefix is removed</td></tr>
+          <tr><td class="mono">category</td><td>Yes, or set "Default category"</td><td>Same category as the SIMs they should pair with</td></tr>
+        </tbody>
+      </table>
+      <pre class="mono">msisdn,category
+81000000,ACME-SIM-001
+91000001,ACME-SIM-001</pre>
+      <div class="hint">The header row is optional. Without it, put one number per line and set the default category.</div>
+    </details>
+  </section>
+
+  <section class="card" id="uploadsCard">
+    <h2>Uploaded files</h2>
+    <div class="tabs" id="upTabs">
+      <button type="button" data-k="" class="on">All</button>
+      <button type="button" data-k="SIMS">SIM files</button>
+      <button type="button" data-k="NUMBERS">Number files</button>
+      <span class="hint" id="upShowing" style="margin:0 0 0 auto"></span>
+    </div>
+    <div class="scroll"><table id="upList"><thead><tr><th>Uploaded</th><th>File name</th><th>Type</th><th>From</th><th>Category</th><th>Rows</th><th>Accepted</th><th>Paired</th><th>Rejected</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div id="upDetail" class="hidden" style="margin-top:16px">
+      <div class="inv-head"><h3 style="margin:0" id="upDetailTitle"></h3><button type="button" class="link" id="upDetailClose">Close</button></div>
+      <div class="hint" id="upDetailMeta" style="margin:4px 0 10px"></div>
+      <div class="tabs" id="upRowTabs">
+        <button type="button" data-r="" class="on">All rows</button>
+        <button type="button" data-r="ACCEPTED">Accepted</button>
+        <button type="button" data-r="REJECTED">Rejected</button>
+      </div>
+      <div class="scroll"><table id="upRows"><thead><tr><th>Row</th><th id="upValueHead">Value</th><th>Result</th><th id="upPairHead">Paired with</th><th>Status / reason</th></tr></thead><tbody></tbody></table></div>
+      <div class="actions"><button type="button" class="secondary hidden" id="upPrev">← Previous</button><span class="hint" id="upRowShowing" style="margin:0"></span><button type="button" class="secondary hidden" id="upNext">Next →</button></div>
+    </div>
   </section>
 
   <section class="card">
     <h2>Inventory by category</h2>
     <table id="invTable"><thead><tr><th>Category</th><th>eSIM</th><th>Physical SIM</th><th>Numbers</th><th>Ready to allocate</th></tr></thead><tbody></tbody></table>
     <div class="actions"><button class="secondary" id="refreshInv">Refresh</button></div>
+  </section>
+
+  <section class="card" id="listsCard">
+    <h2>Inventory lists</h2>
+    <h3 style="font-size:15px;margin:4px 0 8px">SIMs</h3>
+    <form id="simListForm" class="row">
+      <div><label>SIM category</label><select name="category" class="catPick"><option value="">All categories</option></select></div>
+      <div><label>SIM type</label><select name="sim_type"><option value="">All types</option><option value="ESIM">eSIM</option><option value="PHYSICAL">Physical</option></select></div>
+      <div><label>SIM status</label><select name="status"><option value="">All statuses</option><option value="AVAILABLE">Not paired</option><option value="PAIRED">Paired · ready</option><option value="RESERVED">Reserved in a cart</option><option value="ASSIGNED">Active line</option></select></div>
+      <div><label>Search (optional)</label><input name="q" type="search" placeholder="ICCID or number"></div>
+      <div style="flex:0"><button>List SIMs</button></div>
+    </form>
+    <h3 style="font-size:15px;margin:18px 0 8px">Numbers</h3>
+    <form id="numListForm" class="row">
+      <div><label>Number status</label><select name="status"><option value="">All statuses</option><option value="AVAILABLE">Not paired (no SIM yet)</option><option value="PAIRED">Paired · ready</option><option value="RESERVED">Reserved in a cart</option><option value="ASSIGNED">Active line</option></select></div>
+      <div><label>Search (optional)</label><input name="q" type="search" placeholder="Number or ICCID"></div>
+      <div style="flex:0"><button>List numbers</button></div>
+    </form>
+    <div class="msg hidden" id="msgList"></div>
+    <div id="listResult" class="hidden" style="margin-top:16px">
+      <div class="inv-head"><h3 style="margin:0" id="listTitle"></h3><span class="hint" id="listShowing" style="margin:0"></span></div>
+      <div class="chips" id="listCounts"></div>
+      <div class="scroll" style="max-height:460px"><table id="listTable"><thead></thead><tbody></tbody></table></div>
+      <div class="actions"><button type="button" class="secondary hidden" id="listPrev">← Previous</button><span class="spacer"></span><button type="button" class="secondary hidden" id="listNext">Next →</button></div>
+    </div>
   </section>
 
   <section class="card">

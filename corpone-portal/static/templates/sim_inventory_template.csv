@@ -1,0 +1,3 @@
+iccid,sim_type,category,smdp_address,matching_id
+8965010000000100000,ESIM,ACME-SIM-001,smdp.example.com,ABCD-1234-EFGH-5678
+8965010000000100001,PHYSICAL,ACME-SIM-001,,

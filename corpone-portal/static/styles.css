@@ -187,3 +187,10 @@ tr.flash td { animation: flash 2.5s ease-out; }
 .tabs button.on span { color: #dbe8ff; }
 .tabs input { width: 220px; margin-left: auto; padding: 6px 10px; border-radius: 16px; font-size: 13px; }
 .locked { opacity: .45; pointer-events: none; user-select: none; }
+label { overflow-wrap: anywhere; }
+.format { margin-top: 12px; font-size: 13.5px; }
+.format summary { cursor: pointer; font-weight: 600; color: var(--brand-dark); }
+.format table { margin-top: 10px; }
+.format pre { background: #f5f7fa; border: 1px solid var(--line); border-radius: 7px; padding: 10px 12px; overflow-x: auto; margin: 10px 0 6px; }
+button.chip { color: #3c4858; font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: 12px; }
+button.chip:hover { filter: brightness(.96); }

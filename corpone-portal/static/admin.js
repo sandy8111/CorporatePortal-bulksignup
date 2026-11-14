@@ -7,6 +7,8 @@ async function api(method, path, body) {
   const opts = { method, headers: { "X-Admin-Token": token } };
   if (body instanceof FormData) opts.body = body;
   else if (body !== undefined) { opts.body = JSON.stringify(body); opts.headers["Content-Type"] = "application/json"; }
+  opts.cache = "no-store";  // never reuse a cached API response
+  if (method === "GET") path += (path.includes("?") ? "&" : "?") + "_ts=" + Date.now();  // skip copies a CDN already holds
   const res = await fetch(path, opts);
   const data = res.status === 204 ? null : await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -28,7 +30,7 @@ $("#saveToken").onclick = async () => {
 };
 
 function reportText(r) {
-  let t = `${r.accepted} accepted, ${r.paired} paired.`;
+  let t = `${r.filename ? r.filename + ": " : ""}${r.accepted} accepted, ${r.paired} paired.`;
   if (r.paired_existing) t += ` ${r.paired_existing} older waiting item(s) were also paired.`;
   if (r.pairs.length) t += "\nPaired:\n" + r.pairs.slice(0, 50).map(p => `  SIM ${p.iccid} ↔ ${p.msisdn} (${p.sim_type})`).join("\n")
     + (r.paired > 50 ? `\n  …and ${r.paired - 50} more (see SIM ↔ number pairing)` : "");
@@ -46,7 +48,7 @@ for (const [form, path, out] of [["#simForm", "sims", "msgSim"], ["#numForm", "n
     try {
       const r = await api("POST", `api/admin/inventory/${path}`, fd);
       msg(out, reportText(r), r.rejected_count ? "err" : "ok");
-      e.target.reset(); loadInventory(); loadCategories();
+      e.target.reset(); loadInventory(); loadCategories(); loadUploads(r.upload_id);
       if (pair.category) loadPairings();
     } catch (err) { msg(out, err.message); }
   };
@@ -108,6 +110,131 @@ document.querySelectorAll("#pairTabs button").forEach(b => b.onclick = () => { p
 $("#pairPrev").onclick = () => { pair.offset = Math.max(0, pair.offset - PAGE); loadPairings(); };
 $("#pairNext").onclick = () => { pair.offset += PAGE; loadPairings(); };
 
+// ---- Inventory lists: SIMs by category / type / status, numbers by category / status
+const LIST_PAGE = 100;
+const list = { kind: null, params: {}, offset: 0 };
+const STATUS_LABEL = { AVAILABLE: "Not paired", PAIRED: "Paired · ready", RESERVED: "Reserved in a cart", ASSIGNED: "Active line" };
+const simTypeText = t => (t ? (t === "ESIM" ? "eSIM" : "Physical") : "–");
+
+function fillCategoryPickers(cats) {
+  document.querySelectorAll(".catPick").forEach(sel => {
+    const keep = sel.value;
+    sel.replaceChildren(Object.assign(document.createElement("option"), { value: "", textContent: "All categories" }),
+      ...cats.map(c => Object.assign(document.createElement("option"), { value: c, textContent: c })));
+    if (cats.includes(keep)) sel.value = keep;
+  });
+}
+
+async function runList() {
+  const q = new URLSearchParams({ limit: LIST_PAGE, offset: list.offset });
+  for (const [k, v] of Object.entries(list.params)) if (v) q.set(k, v);
+  const sims = list.kind === "sims";
+  let d;
+  try { d = await api("GET", `api/admin/inventory/${sims ? "sim-list" : "number-list"}?${q}`); }
+  catch (err) { return msg("msgList", err.message); }
+  $("#msgList").className = "msg hidden";
+  $("#listResult").classList.remove("hidden");
+  const p = list.params;
+  const filters = [sims ? p.category || "all categories" : null, sims && p.sim_type ? simTypeText(p.sim_type) : null,
+                   p.status ? STATUS_LABEL[p.status] : "all statuses", p.q ? `matching "${p.q}"` : null].filter(Boolean);
+  $("#listTitle").textContent = `${sims ? "SIMs" : "Numbers"} · ${filters.join(" · ")}`;
+  const items = sims ? d.sims : d.numbers;
+  $("#listShowing").textContent = d.total ? `${list.offset + 1}–${list.offset + items.length} of ${d.total}` : "0 found";
+  // status counts for the same filters; click one to narrow the list
+  $("#listCounts").replaceChildren(...Object.entries(d.counts).map(([st, n]) => {
+    const c = document.createElement("button");
+    c.type = "button"; c.className = `chip ${p.status === st ? "info" : ""}`; c.style.border = "0"; c.style.cursor = "pointer";
+    c.textContent = `${STATUS_LABEL[st]}: ${n}`;
+    c.onclick = () => { list.params.status = p.status === st ? "" : st; list.offset = 0;
+      $(sims ? "#simListForm" : "#numListForm").elements.status.value = list.params.status; runList(); };
+    return c;
+  }));
+  const head = sims ? ["ICCID", "Type", "Category", "SIM status", "Paired number", "Number status", "Uploaded", "Paired at"]
+                    : ["Mobile number", "Number status", "Paired SIM", "SIM type", "SIM status", "Uploaded"];
+  $("#listTable thead").replaceChildren(row(head.map(h => Object.assign(document.createElement("th"), { textContent: h }))));
+  $("#listTable tbody").replaceChildren(...(items.length ? items.map(x => sims
+    ? row([mono(x.iccid), simTypeText(x.sim_type), x.category, statusCell(x.status, "–"), mono(x.msisdn),
+           statusCell(x.number_status, "No number yet"), when(x.uploaded_at), when(x.paired_at)])
+    : row([mono(x.msisdn), statusCell(x.status, "–"), mono(x.iccid), simTypeText(x.sim_type),
+           statusCell(x.sim_status, "No SIM yet"), when(x.uploaded_at)]))
+    : [row([Object.assign(td("Nothing matches these filters."), { colSpan: head.length })])]));
+  $("#listPrev").classList.toggle("hidden", list.offset === 0);
+  $("#listNext").classList.toggle("hidden", list.offset + items.length >= d.total);
+}
+for (const [form, kind] of [["#simListForm", "sims"], ["#numListForm", "numbers"]]) {
+  $(form).onsubmit = e => {
+    e.preventDefault();
+    Object.assign(list, { kind, params: Object.fromEntries(new FormData(e.target)), offset: 0 });
+    list.params.q = (list.params.q || "").trim();
+    runList();
+  };
+}
+$("#listPrev").onclick = () => { list.offset = Math.max(0, list.offset - LIST_PAGE); runList(); };
+$("#listNext").onclick = () => { list.offset += LIST_PAGE; runList(); };
+
+// ---- Uploaded files and their rows
+const ups = { kind: "", open: null, result: "", offset: 0 };
+const ROWS_PAGE = 200;
+const FROM = { BACK_OFFICE: "Back office", PORTAL: "Portal", GATEWAY: "API gateway" };
+const STATUS_TEXT = { AVAILABLE: "Not paired", PAIRED: "Paired · ready", RESERVED: "Reserved in a cart", ASSIGNED: "Active line" };
+
+async function loadUploads(openId) {
+  const q = new URLSearchParams({ limit: 50 });
+  if (ups.kind) q.set("kind", ups.kind);
+  let d;
+  try { d = await api("GET", `api/admin/uploads?${q}`); } catch (err) { return msg("msgSim", err.message); }
+  $("#upShowing").textContent = d.total > d.uploads.length ? `Newest ${d.uploads.length} of ${d.total}` : `${d.total} file(s)`;
+  $("#upList tbody").replaceChildren(...(d.uploads.length ? d.uploads.map(u => {
+    const b = document.createElement("button");
+    b.className = "link"; b.textContent = "View";
+    b.onclick = () => openUpload(u.id);
+    const cell = document.createElement("td"); cell.append(b);
+    const name = td(u.filename || "(no name)"); name.className = "mono";
+    const r = row([when(u.uploaded_at), name, u.kind === "SIMS" ? "SIMs" : "Numbers",
+      `${FROM[u.source] || u.source}${u.uploaded_by && u.uploaded_by !== "admin" ? " · " + u.uploaded_by : ""}`,
+      u.default_category || "from file", u.total_rows, u.accepted, u.paired, u.rejected, cell]);
+    return r;
+  }) : [row([Object.assign(td("No files uploaded yet."), { colSpan: 10 })])]));
+  if (openId) openUpload(openId);
+}
+
+async function openUpload(id, keepFilter = false) {
+  if (!keepFilter || ups.open !== id) Object.assign(ups, { result: "", offset: 0 });
+  ups.open = id;
+  const q = new URLSearchParams({ limit: ROWS_PAGE, offset: ups.offset });
+  if (ups.result) q.set("result", ups.result);
+  let d;
+  try { d = await api("GET", `api/admin/uploads/${id}?${q}`); } catch (err) { return msg("msgSim", err.message); }
+  const sims = d.kind === "SIMS";
+  $("#upDetail").classList.remove("hidden");
+  $("#upDetailTitle").textContent = d.filename || "(no name)";
+  $("#upDetailMeta").textContent = `${sims ? "SIM" : "Number"} file · uploaded ${when(d.uploaded_at)} from ${FROM[d.source] || d.source}` +
+    `${d.uploaded_by ? " by " + d.uploaded_by : ""} · ${d.total_rows} rows: ${d.accepted} accepted, ${d.paired} paired, ${d.rejected} rejected`;
+  $("#upValueHead").textContent = sims ? "ICCID" : "Mobile number";
+  $("#upPairHead").textContent = sims ? "Paired number" : "Paired SIM";
+  document.querySelectorAll("#upRowTabs button").forEach(b => b.classList.toggle("on", b.dataset.r === ups.result));
+  $("#upRows tbody").replaceChildren(...(d.rows.length ? d.rows.map(x => {
+    const ok = x.result === "ACCEPTED";
+    const res = document.createElement("td"), p = document.createElement("span");
+    p.className = `pill ${ok ? "COMPLETED" : "FAILED"}`; p.textContent = ok ? "Accepted" : "Rejected"; res.append(p);
+    const status = ok ? (STATUS_TEXT[x.status] || x.status || "no longer in inventory") : x.error;
+    return row([x.row, mono(x.value), res, mono(x.paired_with), status]);
+  }) : [row([Object.assign(td("No rows."), { colSpan: 5 })])]));
+  const end = d.offset + d.rows.length;
+  $("#upRowShowing").textContent = d.rows_total ? `Rows ${d.offset + 1}–${end} of ${d.rows_total}` : "";
+  $("#upPrev").classList.toggle("hidden", d.offset === 0);
+  $("#upNext").classList.toggle("hidden", end >= d.rows_total);
+}
+document.querySelectorAll("#upTabs button").forEach(b => b.onclick = () => {
+  ups.kind = b.dataset.k;
+  document.querySelectorAll("#upTabs button").forEach(x => x.classList.toggle("on", x === b));
+  loadUploads();
+});
+document.querySelectorAll("#upRowTabs button").forEach(b => b.onclick = () => { ups.result = b.dataset.r; ups.offset = 0; openUpload(ups.open, true); });
+$("#upPrev").onclick = () => { ups.offset = Math.max(0, ups.offset - ROWS_PAGE); openUpload(ups.open, true); };
+$("#upNext").onclick = () => { ups.offset += ROWS_PAGE; openUpload(ups.open, true); };
+$("#upDetailClose").onclick = () => { $("#upDetail").classList.add("hidden"); ups.open = null; };
+
 // ---- SIM category allocation (category -> company UEN)
 $("#catForm").onsubmit = async e => {
   e.preventDefault();
@@ -121,6 +248,7 @@ $("#catForm").onsubmit = async e => {
 
 async function loadCategories() {
   const rows = await api("GET", "api/admin/categories");
+  fillCategoryPickers(rows.map(r => r.category).sort());
   $("#catTable tbody").replaceChildren(...(rows.length ? rows.map(a => {
     const b = document.createElement("button");
     b.className = "link"; b.textContent = a.active ? "Deactivate" : "Reactivate";
@@ -236,5 +364,5 @@ async function loadLogs() {
 $("#refreshLogs").onclick = loadLogs;
 $("#resetBreakers").onclick = async () => { await api("POST", "api/admin/gateway/outbound/reset"); loadLogs(); };
 
-async function loadAll() { await Promise.all([loadInventory(), loadCategories(), loadMerchants(), loadBlacklist(), loadScopes(), loadKeys(), loadLogs()]); }
+async function loadAll() { await Promise.all([loadInventory(), loadUploads(), loadCategories(), loadMerchants(), loadBlacklist(), loadScopes(), loadKeys(), loadLogs()]); }
 if (token) loadAll().catch(e => msg("msgToken", e.message));

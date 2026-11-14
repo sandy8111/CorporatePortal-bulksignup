@@ -228,7 +228,9 @@ async def upload_signup_sims(signup_id: str, file: UploadFile = File(...),
     s = _draft(db, signup_id, ao)
     category = _with_category(db, s)
     try:
-        report = inventory.upload_sims(db, await file.read(), category, sim_type, force_category=True)
+        report = inventory.upload_sims(db, await file.read(), category, sim_type, force_category=True,
+                                       src=inventory.UploadSource(filename=file.filename or "", source="PORTAL",
+                                                                  uploaded_by=ao.email, signup_id=s.id))
     except ValidationError as exc:
         _bad(str(exc))
     return report.as_dict()
