@@ -26,7 +26,7 @@ merchant code `CORP-DIRECT-01`, and choose `ACME-SIM-001` in the plan & lines st
 
 > Upgrading from an earlier version: tables are created on startup, so delete `data/corpone.db`
 > once to pick up schema changes (the latest: SIM category moved from the company step to the
-> plan & lines step, and the new `category_allocations` table). Production needs Alembic migrations.
+> plan & lines step, and the `category_allocations` table, whose `uen` is now optional). Production needs Alembic migrations.
 
 ## Account officer login (email OTP)
 
@@ -59,7 +59,7 @@ so eSIM QR codes can only go to an inbox the AO has proved they control.
 |---|---|---|
 | 1. Company | Enter UEN, name, address; upload contract. The details stay editable after validation ("Save changes") | UEN format and check letter (ACRA business, local company, other entity); company must not be blacklisted; contract must be a PDF ≤ 10 MB, stored in S3 with SSE. Changing the UEN re-runs these checks, is refused while the cart has lines, and clears the contract (upload it again) and any SIM category not allocated to the new UEN. Changing only the name or address keeps everything |
 | 2. Account officer | Name, NRIC/FIN/passport, email, mobile; pick the delegated merchant code from a drop-down of active codes (managed in the back office) | NRIC/FIN check letter; AO must not be blacklisted; merchant code must exist and be active |
-| 3. Plan & lines | Choose the SIM category; pick $8 Ray / $20 Flash / $40 Glare; optionally upload SIMs; pick SIM type and quantity | The category must be one the back office allocated to this UEN (e.g. `ACME-SIM-001`), and is required before SIM upload, inventory, cart and submit. It can't be changed while the cart has lines. Allocates already-paired SIM+number lines from that category, then reserves them in the cart |
+| 3. Plan & lines | Choose the SIM category; pick $8 Ray / $20 Flash / $40 Glare; optionally upload SIMs; pick SIM type and quantity | The category must be allocated to this UEN (e.g. `ACME-SIM-001`) or open to all companies, and is required before SIM upload, inventory, cart and submit. It can't be changed while the cart has lines. Allocates already-paired SIM+number lines from that category, then reserves them in the cart |
 | 4. Review | Cart summary per plan, line list, monthly total; confirm and submit | Blacklist checked again at submit |
 | 5. Status | Live provisioning status per line | |
 
@@ -141,11 +141,16 @@ The portal compares the results with what the AO entered and shows them at the r
 - **Auto-pairing** runs after every upload. Unpaired SIMs are paired with unpaired numbers of the
   **same category**, oldest first. Status lifecycle: `AVAILABLE → PAIRED → RESERVED (cart) →
   ASSIGNED (line)`.
-- **SIM categories are allocated per company.** In the back office ("SIM categories allocated to
-  companies", `PUT /api/admin/categories`), each category, e.g. `ACME-SIM-001`, is allocated to
-  one company UEN. A company can have several. An AO can only choose from their UEN's active
-  categories (`GET /api/signups/{id}/categories`, `PUT /api/signups/{id}/category`). Deactivating
-  an allocation stops draft sign-ups from adding lines or submitting until they choose another.
+- **Who can use a SIM category** (back office card "SIM categories: who can use them",
+  `PUT /api/admin/categories`):
+  - *Allocated to a company:* give a UEN, e.g. `ACME-SIM-001` → `197401143C`. Only that company's
+    AOs can choose it. A company can have several.
+  - *For all companies:* leave the UEN blank. A category that has SIMs/numbers but was never
+    allocated is also open to all companies.
+  - *Deactivated:* hidden from every company. Draft sign-ups using it can't add lines or submit
+    until they choose another category.
+  AOs choose from their own categories first, then the shared ones
+  (`GET /api/signups/{id}/categories`, `PUT /api/signups/{id}/category`).
 - SIMs that an AO uploads in the wizard are locked to the sign-up's chosen category.
 - The upload result lists every SIM ↔ number pair it made. A SIM or number that was already
   uploaded is reported with its current pairing, but only when it is in the same category as the

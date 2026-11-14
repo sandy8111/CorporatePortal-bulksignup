@@ -106,23 +106,23 @@ def delete_blacklist(entry_id: int, db: Session = Depends(get_db)):
 
 @router.get("/categories")
 def list_categories(uen: str | None = None, db: Session = Depends(get_db)):
-    """SIM categories and the company (UEN) each is allocated to, with lines ready to allocate."""
-    stmt = select(CategoryAllocation).order_by(CategoryAllocation.uen, CategoryAllocation.category)
+    """Every SIM category and who may use it: one company (uen) or all companies (uen null).
+    Categories with inventory but no allocation are listed with allocated=false (open to all)."""
+    rows = categories.all_categories(db)
     if uen:
-        stmt = stmt.where(CategoryAllocation.uen == uen.strip().upper())
-    ready = categories.ready_counts(db)
-    return [categories.view(a, ready) for a in db.scalars(stmt)]
+        rows = [r for r in rows if r["uen"] == uen.strip().upper()]
+    return categories.with_counts(rows, db)
 
 
 @router.put("/categories")
 def allocate_category(body: CategoryAllocationIn, db: Session = Depends(get_db)):
-    """Allocate a SIM category to a company, or update/deactivate an allocation (one company per category)."""
+    """Set who may use a category: a company UEN, or no UEN for all companies. active=false hides it from all."""
     a = db.scalars(select(CategoryAllocation).where(CategoryAllocation.category == body.category)).first() \
         or CategoryAllocation(category=body.category)
     a.uen, a.description, a.active = body.uen, body.description.strip(), body.active
     db.add(a)
     db.commit()
-    return categories.view(a, categories.ready_counts(db))
+    return categories.with_counts([e for e in categories.all_categories(db) if e["category"] == a.category], db)[0]
 
 
 @router.get("/merchants")

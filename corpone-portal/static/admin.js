@@ -114,7 +114,7 @@ $("#catForm").onsubmit = async e => {
   const f = Object.fromEntries(new FormData(e.target));
   try {
     const a = await api("PUT", "api/admin/categories", { ...f, active: true });
-    msg("msgCat", `${a.category} is allocated to UEN ${a.uen}.`, "ok");
+    msg("msgCat", a.uen ? `${a.category} is allocated to UEN ${a.uen} only.` : `${a.category} is available to all companies.`, "ok");
     e.target.reset(); loadCategories();
   } catch (err) { msg("msgCat", err.message); }
 };
@@ -125,13 +125,16 @@ async function loadCategories() {
     const b = document.createElement("button");
     b.className = "link"; b.textContent = a.active ? "Deactivate" : "Reactivate";
     b.onclick = async () => {
-      if (a.active && !confirm(`Stop ${a.uen} from using ${a.category}? Draft sign-ups using it must choose another category.`)) return;
+      const who = a.uen ? a.uen : "all companies";
+      if (a.active && !confirm(`Hide ${a.category} from ${who}? Draft sign-ups using it must choose another category.`)) return;
       try { await api("PUT", "api/admin/categories", { category: a.category, uen: a.uen, description: a.description, active: !a.active }); loadCategories(); }
       catch (err) { msg("msgCat", err.message); }
     };
     const cell = document.createElement("td"); cell.append(b);
-    return row([a.category, a.uen, a.description || "–", a.ESIM, a.PHYSICAL, a.active ? "active" : "inactive", cell]);
-  }) : [row([Object.assign(td("No categories allocated yet."), { colSpan: 7 })])]));
+    const scope = a.uen ? `UEN ${a.uen}` : a.allocated ? "All companies" : "All companies (not allocated)";
+    const status = a.active ? "active" : "inactive (hidden)";
+    return row([a.category, scope, a.description || "–", a.ESIM, a.PHYSICAL, status, cell]);
+  }) : [row([Object.assign(td("No SIM categories yet. Allocate one above, or upload SIMs/numbers with a category."), { colSpan: 7 })])]));
 }
 
 // ---- Delegated merchant codes (shown in the AO step's drop-down when active)

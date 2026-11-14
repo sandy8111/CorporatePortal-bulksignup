@@ -43,7 +43,7 @@ def _with_category(db: Session, s: Signup) -> str:
     if not s.category:
         _bad("Choose a SIM category first", 409)
     if not categories.is_allocated(db, s.uen, s.category):
-        _bad(f"SIM category {s.category} is no longer allocated to UEN {s.uen}; choose another category", 409)
+        _bad(f"SIM category {s.category} is no longer available to UEN {s.uen}; choose another category", 409)
     return s.category
 
 
@@ -201,11 +201,10 @@ def set_account_officer(signup_id: str, body: AccountOfficerIn, ao: AoSession = 
 
 @router.get("/signups/{signup_id}/categories")
 def signup_categories(signup_id: str, ao: AoSession = Depends(current_ao), db: Session = Depends(get_db)):
-    """SIM categories allocated to this sign-up's company, with paired lines ready per SIM type."""
+    """SIM categories this company can use (its own, then those open to all), with lines ready per SIM type."""
     s = _owned(db, signup_id, ao)
-    ready = categories.ready_counts(db)
     return {"uen": s.uen, "selected": s.category,
-            "categories": [categories.view(a, ready) for a in categories.for_company(db, s.uen)]}
+            "categories": categories.with_counts(categories.for_company(db, s.uen), db)}
 
 
 @router.put("/signups/{signup_id}/category")
@@ -213,7 +212,7 @@ def choose_category(signup_id: str, body: CategoryChoice, ao: AoSession = Depend
                     db: Session = Depends(get_db)):
     s = _draft(db, signup_id, ao)
     if not categories.is_allocated(db, s.uen, body.category):
-        _bad(f"SIM category {body.category} is not allocated to UEN {s.uen}", 403)
+        _bad(f"SIM category {body.category} is not available to UEN {s.uen}", 403)
     if s.cart_lines and body.category != s.category:
         _bad("Remove the lines in your cart before changing the SIM category", 409)
     s.category = body.category

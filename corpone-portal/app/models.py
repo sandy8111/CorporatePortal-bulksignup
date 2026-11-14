@@ -126,12 +126,14 @@ class MobileNumber(Base):
 
 
 class CategoryAllocation(Base):
-    """A SIM inventory category pre-allocated by the back office to one company (UEN), e.g. ACME-SIM-001.
-    A company can have several categories; a category belongs to exactly one company."""
+    """Who may use a SIM inventory category, e.g. ACME-SIM-001.
+
+    uen set: only that company (a company can have several categories). uen None: all companies.
+    A category with SIMs/numbers but no row here is also open to all companies; active=False hides it."""
     __tablename__ = "category_allocations"
     id: Mapped[int] = mapped_column(primary_key=True)
     category: Mapped[str] = mapped_column(String(40), unique=True)
-    uen: Mapped[str] = mapped_column(String(10), index=True)
+    uen: Mapped[str | None] = mapped_column(String(10), index=True, nullable=True)
     description: Mapped[str] = mapped_column(String(200), default="")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

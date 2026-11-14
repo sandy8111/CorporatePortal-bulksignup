@@ -224,7 +224,8 @@ async function loadCategories() {
   sel.replaceChildren(...d.categories.map(c => {
     const o = document.createElement("option");
     o.value = c.category;
-    o.textContent = `${c.category}${c.description ? " – " + c.description : ""} (${c.ESIM} eSIM, ${c.PHYSICAL} physical ready)`;
+    const scope = c.scope === "ALL" ? "all companies" : "your company";
+    o.textContent = `${c.category}${c.description ? " – " + c.description : ""} · ${scope} (${c.ESIM} eSIM, ${c.PHYSICAL} physical ready)`;
     return o;
   }));
   const allocated = d.categories.some(c => c.category === d.selected);
@@ -232,11 +233,11 @@ async function loadCategories() {
   $("#categoryForm button").disabled = !d.categories.length;
   if (!d.categories.length) {
     setCategoryReady(false);
-    return msg("msgCat", `No SIM category is allocated to UEN ${d.uen} yet. Ask CorpOne to allocate one, then reload this page.`);
+    return msg("msgCat", `No SIM category is available to UEN ${d.uen} yet. Ask CorpOne to allocate one, then reload this page.`);
   }
   if (d.selected && !allocated) {
     setCategoryReady(false);
-    return msg("msgCat", `SIM category ${d.selected} is no longer allocated to your company. Choose another one.`);
+    return msg("msgCat", `SIM category ${d.selected} is no longer available to your company. Choose another one.`);
   }
   if (!d.selected) { setCategoryReady(false); return msg("msgCat", "Choose a SIM category to continue.", "info"); }
   msg("msgCat", "");

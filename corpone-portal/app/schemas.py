@@ -26,7 +26,7 @@ class CategoryChoice(BaseModel):
 
 class CategoryAllocationIn(BaseModel):
     category: str
-    uen: str
+    uen: str | None = None  # blank/None = available to all companies
     description: str = Field(default="", max_length=200)
     active: bool = True
 
@@ -36,7 +36,7 @@ class CategoryAllocationIn(BaseModel):
 
     @field_validator("uen")
     @classmethod
-    def _uen(cls, x): return v.validate_uen(x)
+    def _uen(cls, x): return v.validate_uen(x) if x and x.strip() else None
 
 
 class AccountOfficerIn(BaseModel):

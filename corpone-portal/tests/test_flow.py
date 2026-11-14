@@ -331,8 +331,8 @@ def test_category_is_chosen_from_company_allocations(client):
 
     d = client.get(f"/api/signups/{sid}/categories").json()
     assert [c["category"] for c in d["categories"]] == ["ACME-SIM-001", "ACME-SIM-002"]
-    assert d["categories"][0] == {"category": "ACME-SIM-001", "uen": UEN, "description": "", "active": True,
-                                       "ESIM": 2, "PHYSICAL": 1}
+    assert d["categories"][0] == {"category": "ACME-SIM-001", "uen": UEN, "scope": "COMPANY", "description": "",
+                                  "active": True, "allocated": True, "ESIM": 2, "PHYSICAL": 1}
     assert client.put(f"/api/signups/{sid}/category", json={"category": "OTHERCO-SIM-001"}).status_code == 403
     assert client.put(f"/api/signups/{sid}/category", json={"category": "NOT-ALLOCATED"}).status_code == 403
 
@@ -350,7 +350,7 @@ def test_category_is_chosen_from_company_allocations(client):
     allocate(client, "ACME-SIM-001", active=False)
     assert client.get(f"/api/signups/{sid}/categories").json()["categories"][0]["category"] == "ACME-SIM-002"
     r = client.post(f"/api/signups/{sid}/cart", json={"plan_code": "RAY-8", "sim_type": "ESIM", "quantity": 1})
-    assert r.status_code == 409 and "no longer allocated" in r.json()["detail"]
+    assert r.status_code == 409 and "no longer available" in r.json()["detail"]
     assert client.post(f"/api/signups/{sid}/submit").status_code == 409
 
 
@@ -439,3 +439,35 @@ def test_pages_link_fingerprinted_assets_and_are_not_cached(client):
     assert client.get("/static/v/abc/../main.py").status_code == 404
     assert client.get("/static/v/abc/secret.txt").status_code == 404
     assert client.get("/static/app.js").headers["cache-control"] == "no-cache"
+
+
+def test_category_for_all_companies(client):
+    load_inventory(client, category="POOL-OPEN", esim=1, physical=0, numbers=1)    # never allocated
+    load_inventory(client, category="POOL-SHARED", esim=0, physical=0, numbers=0)
+    allocate(client, "POOL-SHARED", uen=None)                                      # explicitly for all
+    client.put("/api/admin/categories", headers=ADMIN, json={"category": "POOL-SHARED", "uen": "", "description": "Shared pool"})
+    allocate(client, "ACME-SIM-001")                                               # Acme only
+    allocate(client, "OTHER-SIM-001", uen="53312345C")                             # another company only
+    allocate(client, "POOL-OFF", uen=None, active=False)                           # hidden from everyone
+
+    sid = client.post("/api/signups", json={"uen": UEN, "company_name": "Acme"}).json()["id"]
+    d = client.get(f"/api/signups/{sid}/categories").json()["categories"]
+    assert [(c["category"], c["scope"]) for c in d] == [
+        ("ACME-SIM-001", "COMPANY"), ("POOL-OPEN", "ALL"), ("POOL-SHARED", "ALL")]
+    assert next(c for c in d if c["category"] == "POOL-SHARED")["description"] == "Shared pool"
+    for cat, code in (("POOL-OPEN", 200), ("POOL-SHARED", 200), ("OTHER-SIM-001", 403), ("POOL-OFF", 403), ("NOPE", 403)):
+        assert client.put(f"/api/signups/{sid}/category", json={"category": cat}).status_code == code, cat
+
+    # an open category works end to end: upload, availability, cart
+    client.put(f"/api/signups/{sid}/category", json={"category": "POOL-OPEN"})
+    assert client.get(f"/api/signups/{sid}/availability").json()["ESIM"] == 1
+    assert client.post(f"/api/signups/{sid}/cart", json={"plan_code": "RAY-8", "sim_type": "ESIM", "quantity": 1}).status_code == 200
+
+    # allocating an open category to a company takes it away from everyone else
+    allocate(client, "POOL-OPEN", uen="53312345C")
+    assert client.post(f"/api/signups/{sid}/cart", json={"plan_code": "RAY-8", "sim_type": "ESIM", "quantity": 1}).status_code == 409
+
+    # back office sees every category, including ones never allocated
+    rows = {r["category"]: r for r in client.get("/api/admin/categories", headers=ADMIN).json()}
+    assert rows["POOL-SHARED"]["scope"] == "ALL" and rows["POOL-SHARED"]["allocated"]
+    assert rows["POOL-OFF"]["active"] is False and rows["OTHER-SIM-001"]["uen"] == "53312345C"

@@ -22,16 +22,16 @@
   </section>
 
   <section class="card">
-    <h2>SIM categories allocated to companies</h2>
+    <h2>SIM categories: who can use them</h2>
     <form id="catForm" class="row">
       <div><label>SIM category</label><input name="category" required maxlength="40" placeholder="e.g. ACME-SIM-001"></div>
-      <div><label>Company UEN</label><input name="uen" required maxlength="12" placeholder="e.g. 197401143C"></div>
+      <div><label>Company UEN (blank = all companies)</label><input name="uen" maxlength="12" placeholder="e.g. 197401143C"></div>
       <div><label>Description (optional)</label><input name="description" maxlength="200" placeholder="e.g. Acme HQ staff lines"></div>
       <div style="flex:0"><button>Allocate</button></div>
     </form>
-    <div class="hint">Account officers can only pick, upload SIMs into, and take lines from categories allocated to their company's UEN. A category belongs to one company; allocating it again moves it.</div>
+    <div class="hint">With a UEN, only that company's account officers can choose the category. Without one, every company can. Categories that have inventory but were never allocated are also open to all companies. Saving a category again changes who can use it; deactivating hides it from everyone.</div>
     <div class="msg hidden" id="msgCat"></div>
-    <table id="catTable" style="margin-top:14px"><thead><tr><th>SIM category</th><th>UEN</th><th>Description</th><th>eSIM ready</th><th>Physical ready</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
+    <table id="catTable" style="margin-top:14px"><thead><tr><th>SIM category</th><th>Available to</th><th>Description</th><th>eSIM ready</th><th>Physical ready</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
   </section>
 
   <section class="card">
