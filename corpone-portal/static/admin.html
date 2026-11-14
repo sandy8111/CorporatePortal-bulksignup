@@ -58,7 +58,7 @@
       <pre class="mono">iccid,sim_type,category,smdp_address,matching_id
 8965010000000100000,ESIM,ACME-SIM-001,smdp.example.com,ABCD-1234-EFGH-5678
 8965010000000100001,PHYSICAL,ACME-SIM-001,,</pre>
-      <div class="hint">The header row is optional. Without it, put one ICCID per line and set the defaults above. New SIMs pair automatically with available numbers in the same category. Rows that fail are listed with a reason; the rest are loaded.</div>
+      <div class="hint">The header row is optional. Without it, put one ICCID per line and set the defaults above. New SIMs pair automatically with available numbers in the same category: SIMs in this file first, then any numbers left over go to SIMs uploaded earlier that are still waiting. Rows that fail are listed with a reason; the rest are loaded.</div>
     </details>
   </section>
 
@@ -76,13 +76,13 @@
         <thead><tr><th>Column</th><th>Required</th><th>Rule</th></tr></thead>
         <tbody>
           <tr><td class="mono">msisdn</td><td>Yes</td><td>8 digits starting with 8 or 9; a <span class="mono">+65</span> prefix is removed</td></tr>
-          <tr><td class="mono">category</td><td>Yes, or set "Default category"</td><td>Same category as the SIMs they should pair with</td></tr>
+          <tr><td class="mono">category</td><td>Yes, or set "Default category"</td><td>Same category as the SIMs they will pair with</td></tr>
         </tbody>
       </table>
       <pre class="mono">msisdn,category
 81000000,ACME-SIM-001
 91000001,ACME-SIM-001</pre>
-      <div class="hint">The header row is optional. Without it, put one number per line and set the default category.</div>
+      <div class="hint">The header row is optional. Without it, put one number per line and set the default category. Uploading numbers does not pair them: they are added as available and pair when SIMs are uploaded to the same category.</div>
     </details>
   </section>
 

@@ -156,7 +156,7 @@ def inv_summary(_=Depends(require("inventory:read")), db: Session = Depends(get_
     return inventory.summary(db)
 
 
-@gateway_app.post("/v1/inventory/sims", tags=["inventory"], summary="Upload SIM CSV (auto-pairs)")
+@gateway_app.post("/v1/inventory/sims", tags=["inventory"], summary="Upload SIM CSV (auto-pairs with available numbers)")
 async def inv_sims(request: Request, file: UploadFile = File(...), category: str | None = Form(None),
                    sim_type: SimType | None = Form(None),
                    _=Depends(require("inventory:write")), db: Session = Depends(get_db)):
@@ -164,7 +164,7 @@ async def inv_sims(request: Request, file: UploadFile = File(...), category: str
                                  sim_type, src=_gateway_source(request, file)).as_dict()
 
 
-@gateway_app.post("/v1/inventory/numbers", tags=["inventory"], summary="Upload number CSV (auto-pairs)")
+@gateway_app.post("/v1/inventory/numbers", tags=["inventory"], summary="Upload number CSV (added as available; pairs when SIMs are uploaded)")
 async def inv_numbers(request: Request, file: UploadFile = File(...), category: str | None = Form(None),
                       _=Depends(require("inventory:write")), db: Session = Depends(get_db)):
     return inventory.upload_numbers(db, await file.read(), validate_category(category) if category else None,

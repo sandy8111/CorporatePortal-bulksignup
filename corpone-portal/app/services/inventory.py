@@ -101,11 +101,11 @@ def _row_category(row: dict, default_category: str | None, force_category: bool 
     return category
 
 
-def _pair_categories(db: Session, report: UploadReport, categories: set[str], new_key: str, new_values: set[str]):
-    """Run auto-pairing and keep only pairs that involve this upload's rows in report.pairs."""
+def _pair_categories(db: Session, report: UploadReport, categories: set[str], new_values: set[str]):
+    """Pair this upload's SIMs first; numbers left over go to older waiting SIMs (counted in paired_existing)."""
     for c in sorted(categories):
-        for p in auto_pair(db, c):
-            if p[new_key] in new_values:
+        for p in auto_pair(db, c, first=new_values):
+            if p["iccid"] in new_values:
                 report.pairs.append(p)
             else:
                 report.paired_existing += 1
@@ -167,7 +167,7 @@ def upload_sims(db: Session, raw: bytes, default_category: str | None,
         report.accepted_rows.append((line_no, iccid, category))
 
     db.flush()
-    _pair_categories(db, report, categories, "iccid", seen)
+    _pair_categories(db, report, categories, seen)
     paired_to = {p["iccid"]: p["msisdn"] for p in report.pairs}
     report.items = [{"iccid": s.iccid, "sim_type": s.sim_type.value, "category": s.category,
                      "msisdn": paired_to.get(s.iccid)} for s in new_sims]
@@ -178,6 +178,7 @@ def upload_sims(db: Session, raw: bytes, default_category: str | None,
 
 def upload_numbers(db: Session, raw: bytes, default_category: str | None,
                    src: UploadSource | None = None) -> UploadReport:
+    """Load numbers into inventory as AVAILABLE. They are not paired here: uploading SIMs pairs them."""
     rows = _rows(raw, "msisdn")
     if len(rows) > MAX_ROWS:
         raise ValidationError(f"File has more than {MAX_ROWS} rows")
@@ -217,22 +218,23 @@ def upload_numbers(db: Session, raw: bytes, default_category: str | None,
         report.accepted_rows.append((line_no, msisdn, category))
 
     db.flush()
-    _pair_categories(db, report, categories, "msisdn", seen)
-    paired_to = {p["msisdn"]: p["iccid"] for p in report.pairs}
-    report.items = [{"msisdn": n.msisdn, "category": n.category, "iccid": paired_to.get(n.msisdn)}
-                    for n in new_numbers]
+    # Numbers are only added as AVAILABLE. Pairing happens when SIMs are uploaded (see upload_sims).
+    report.items = [{"msisdn": n.msisdn, "category": n.category, "iccid": None} for n in new_numbers]
     _record_batch(db, report, "NUMBERS", src, default_category)
     db.commit()
     return report
 
 
-def auto_pair(db: Session, category: str) -> list[dict]:
-    """Pair unpaired SIMs with unpaired numbers of the same category, oldest first. Returns the new pairs."""
+def auto_pair(db: Session, category: str, first: set[str] | None = None) -> list[dict]:
+    """Pair unpaired SIMs with available numbers of the same category. SIMs whose ICCID is in `first`
+    (the ones just uploaded) go first, in upload order, then older waiting SIMs; numbers oldest first."""
     sims = db.scalars(
         select(Sim).where(Sim.category == category, Sim.status == InventoryStatus.AVAILABLE,
                           Sim.number_id.is_(None))
         .order_by(Sim.id).with_for_update(skip_locked=True)
     ).all()
+    if first:
+        sims = sorted(sims, key=lambda x: x.iccid not in first)  # stable: keeps id order within each group
     if not sims:
         return []
     numbers = db.scalars(

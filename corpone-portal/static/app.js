@@ -269,7 +269,7 @@ async function refreshAvailability() {
   const ready = a.ESIM + a.PHYSICAL;
   $("#subNumbers").classList.toggle("complete", ready > 0);
   if (a.sims_waiting && !a.numbers_available)
-    msg("msgNumbers", `${a.sims_waiting} SIM(s) are waiting because no numbers are available in ${a.category}. Ask CorpOne to add numbers; they pair automatically.`, "err");
+    msg("msgNumbers", `${a.sims_waiting} SIM(s) are waiting because no numbers are available in ${a.category}. Ask CorpOne to add numbers to this category; waiting SIMs pair the next time SIMs are uploaded to it.`, "err");
   else if (!ready && !a.numbers_available)
     msg("msgNumbers", `No numbers are available in ${a.category} yet. Ask CorpOne to add numbers to this category.`, "err");
   else if (!ready)

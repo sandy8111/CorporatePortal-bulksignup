@@ -121,13 +121,27 @@
         </div>
         <div class="sub" id="subSim">
           <h4>Upload SIM cards <small>(optional if SIMs are already loaded)</small></h4>
-          <form id="simForm" class="row">
-            <div><label>SIM file (CSV: iccid[,sim_type])</label><input type="file" name="file" accept=".csv,.txt,text/csv" required></div>
-            <div style="flex:0;min-width:auto"><label>Type for rows without one</label>
+          <form id="simForm" class="upload-row">
+            <div class="field-file"><label>SIM file (CSV)</label><input type="file" name="file" accept=".csv,.txt,text/csv" required></div>
+            <div><label>Default SIM type</label>
               <div class="seg"><label><input type="radio" name="sim_type" value="ESIM" checked>eSIM</label><label><input type="radio" name="sim_type" value="PHYSICAL">Physical</label></div></div>
-            <div style="flex:0"><button type="submit" class="secondary">Upload SIMs</button></div>
+            <div><button type="submit">Upload SIMs</button></div>
           </form>
-          <div class="hint">ICCIDs must be numeric, 18–20 digits. New SIMs go into the selected category and are paired automatically with its available numbers, oldest first.</div>
+          <div class="hint">"Default SIM type" is used for rows that don't have a <span class="mono">sim_type</span>. New SIMs go into the selected category and pair automatically with its available numbers.</div>
+          <details class="format">
+            <summary>CSV format · <a href="static/templates/portal_sim_template.csv" download>download template</a></summary>
+            <table>
+              <thead><tr><th>Column</th><th>Required</th><th>Rule</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">iccid</td><td>Yes</td><td>Numbers only, 18–20 digits</td></tr>
+                <tr><td class="mono">sim_type</td><td>No</td><td><span class="mono">ESIM</span> or <span class="mono">PHYSICAL</span>; uses "Default SIM type" when empty</td></tr>
+              </tbody>
+            </table>
+            <pre class="mono">iccid,sim_type
+8965010000000100000,ESIM
+8965010000000100001,PHYSICAL</pre>
+            <div class="hint">The header row is optional: a file with one ICCID per line also works.</div>
+          </details>
           <div class="msg hidden" id="msgSim"></div>
           <div id="simResult" class="hidden">
             <div class="chips" id="simResultChips"></div>
@@ -153,11 +167,11 @@
           <h4>Pair SIMs &amp; add lines</h4>
           <label>Plan</label>
           <div class="plans" id="plans"></div>
-          <form id="cartForm" class="row" style="margin-top:14px">
-            <div style="flex:0;min-width:auto"><label>SIM type</label>
+          <form id="cartForm" class="upload-row" style="margin-top:14px">
+            <div><label>SIM type</label>
               <div class="seg"><label><input type="radio" name="sim_type" value="ESIM" checked>eSIM</label><label><input type="radio" name="sim_type" value="PHYSICAL">Physical</label></div></div>
-            <div style="max-width:180px"><label>Number of lines</label><input name="quantity" type="number" min="1" max="5000" value="1" required></div>
-            <div style="flex:0"><button type="submit">Add paired lines to cart</button></div>
+            <div style="width:160px"><label>Number of lines</label><input name="quantity" type="number" min="1" max="5000" value="1" required style="height:44px"></div>
+            <div><button type="submit" style="white-space:nowrap">Add paired lines to cart</button></div>
           </form>
           <div class="hint">Each line is a SIM already paired with a number from the selected category.</div>
           <div class="msg hidden" id="msg4"></div>

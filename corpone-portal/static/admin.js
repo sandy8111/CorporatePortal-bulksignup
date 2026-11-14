@@ -29,13 +29,19 @@ $("#saveToken").onclick = async () => {
   try { await loadAll(); msg("msgToken", "Connected.", "ok"); } catch (e) { msg("msgToken", e.message); }
 };
 
-function reportText(r) {
-  let t = `${r.filename ? r.filename + ": " : ""}${r.accepted} accepted, ${r.paired} paired.`;
-  if (r.paired_existing) t += ` ${r.paired_existing} older waiting item(s) were also paired.`;
-  if (r.pairs.length) t += "\nPaired:\n" + r.pairs.slice(0, 50).map(p => `  SIM ${p.iccid} ↔ ${p.msisdn} (${p.sim_type})`).join("\n")
-    + (r.paired > 50 ? `\n  …and ${r.paired - 50} more (see SIM ↔ number pairing)` : "");
-  const waiting = r.items.filter(x => !(x.iccid && x.msisdn)).length;
-  if (waiting) t += `\n${waiting} new item(s) still waiting to be paired.`;
+function reportText(r, kind) {
+  const name = r.filename ? r.filename + ": " : "";
+  let t;
+  if (kind === "numbers") {
+    t = `${name}${r.accepted} number(s) added as available. They pair when SIMs are uploaded to the same category.`;
+  } else {
+    t = `${name}${r.accepted} accepted, ${r.paired} paired with an available number.`;
+    if (r.paired_existing) t += ` ${r.paired_existing} SIM(s) uploaded earlier were also paired with numbers left over.`;
+    if (r.pairs.length) t += "\nPaired:\n" + r.pairs.slice(0, 50).map(p => `  SIM ${p.iccid} ↔ ${p.msisdn} (${p.sim_type})`).join("\n")
+      + (r.paired > 50 ? `\n  …and ${r.paired - 50} more (see Inventory lists)` : "");
+    const waiting = r.items.filter(x => !x.msisdn).length;
+    if (waiting) t += `\n${waiting} SIM(s) are waiting: no available numbers left in the category.`;
+  }
   if (r.rejected_count) t += `\n${r.rejected_count} rejected:\n` + r.rejected.slice(0, 50).map(x => `  row ${x.row} (${x.value}): ${x.error}`).join("\n");
   return t;
 }
@@ -47,7 +53,7 @@ for (const [form, path, out] of [["#simForm", "sims", "msgSim"], ["#numForm", "n
     for (const [k, v] of [...fd.entries()]) if (v === "") fd.delete(k);
     try {
       const r = await api("POST", `api/admin/inventory/${path}`, fd);
-      msg(out, reportText(r), r.rejected_count ? "err" : "ok");
+      msg(out, reportText(r, path), r.rejected_count ? "err" : "ok");
       e.target.reset(); loadInventory(); loadCategories(); loadUploads(r.upload_id);
       if (pair.category) loadPairings();
     } catch (err) { msg(out, err.message); }

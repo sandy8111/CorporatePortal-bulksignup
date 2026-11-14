@@ -140,9 +140,11 @@ The portal compares the results with what the AO entered and shows them at the r
   category or SIM type is used.
 - Validation is per row. Valid rows are loaded, and invalid or duplicate rows come back with a
   reason.
-- **Auto-pairing** runs after every upload. Unpaired SIMs are paired with unpaired numbers of the
-  **same category**, oldest first. Status lifecycle: `AVAILABLE → PAIRED → RESERVED (cart) →
-  ASSIGNED (line)`.
+- **Pairing runs on SIM upload only.** A number upload adds the numbers as `AVAILABLE` and pairs
+  nothing. A SIM upload pairs its SIMs with available numbers of the **same category**: the SIMs
+  in that file first (in file order), then any numbers left over go to SIMs uploaded earlier that
+  are still waiting; numbers are used oldest first. Status lifecycle: `AVAILABLE → PAIRED →
+  RESERVED (cart) → ASSIGNED (line)`.
 - **Who can use a SIM category** (back office card "SIM categories: who can use them",
   `PUT /api/admin/categories`):
   - *Allocated to a company:* give a UEN, e.g. `ACME-SIM-001` → `197401143C`. Only that company's

@@ -14,12 +14,13 @@ def iccid(i): return f"896501{i:013d}"  # 19 digits
 
 
 def load_inventory(client, category="ACME", esim=3, physical=2, numbers=5):
+    """Numbers first (added as available), then SIMs, which pair with them on upload."""
+    nums = "msisdn,category\n" + "".join(f"{90000000 + i},{category}\n" for i in range(numbers))
+    r = client.post("/api/admin/inventory/numbers", headers=ADMIN, files={"file": ("n.csv", nums)})
+    assert r.status_code == 200, r.text
     sims = "iccid,sim_type,category\n" + "".join(
         f"{iccid(i)},{'ESIM' if i < esim else 'PHYSICAL'},{category}\n" for i in range(esim + physical))
     r = client.post("/api/admin/inventory/sims", headers=ADMIN, files={"file": ("s.csv", sims)})
-    assert r.status_code == 200, r.text
-    nums = "msisdn,category\n" + "".join(f"{90000000 + i},{category}\n" for i in range(numbers))
-    r = client.post("/api/admin/inventory/numbers", headers=ADMIN, files={"file": ("n.csv", nums)})
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -96,17 +97,25 @@ def test_inventory_validation_rejects_bad_rows(client):
     nums = "91234567\n71234567\n9123\n"
     r = client.post("/api/admin/inventory/numbers", headers=ADMIN, data={"category": "ACME"},
                     files={"file": ("n.csv", nums)}).json()
-    assert r["accepted"] == 1 and r["rejected_count"] == 2 and r["paired"] == 1
+    assert r["accepted"] == 1 and r["rejected_count"] == 2 and r["paired"] == 0  # numbers never pair on upload
 
 
-def test_pairing_respects_category(client):
-    load_inventory(client, category="ACME", esim=2, physical=0, numbers=0)
-    nums = "msisdn,category\n81111111,OTHER\n"
+def test_number_upload_does_not_pair_sim_upload_does(client):
+    load_inventory(client, category="ACME", esim=2, physical=0, numbers=0)   # 2 SIMs waiting, no numbers
+    nums = "msisdn,category\n81111111,OTHER\n82222222,ACME\n"
     r = client.post("/api/admin/inventory/numbers", headers=ADMIN, files={"file": ("n.csv", nums)}).json()
-    assert r["paired"] == 0
-    nums = "msisdn,category\n82222222,ACME\n"
-    assert client.post("/api/admin/inventory/numbers", headers=ADMIN,
-                       files={"file": ("n.csv", nums)}).json()["paired"] == 1
+    assert (r["accepted"], r["paired"], r["pairs"]) == (2, 0, [])
+    assert all(x["iccid"] is None for x in r["items"])
+    nl = client.get("/api/admin/inventory/number-list?status=AVAILABLE", headers=ADMIN).json()
+    assert {x["msisdn"] for x in nl["numbers"]} == {"81111111", "82222222"}
+
+    # a SIM upload pairs with available numbers of its own category only
+    r = client.post("/api/admin/inventory/sims", headers=ADMIN,
+                    files={"file": ("s.csv", f"iccid,sim_type,category\n{iccid(9)},ESIM,ACME\n")}).json()
+    assert (r["paired"], r["paired_existing"]) == (1, 0)  # the SIM just uploaded gets the number first
+    assert r["items"][0]["msisdn"] == "82222222"
+    nl = client.get("/api/admin/inventory/number-list?status=AVAILABLE", headers=ADMIN).json()
+    assert [x["msisdn"] for x in nl["numbers"]] == ["81111111"]  # the OTHER-category number stays available
 
 
 def test_ao_sim_upload_locked_to_signup_category(client):
@@ -240,11 +249,13 @@ def test_sim_list_pairing_and_cart_details(client):
     assert errs[paired[0]["iccid"]]["existing"]["msisdn"] == paired[0]["msisdn"]
     assert "not paired yet" in errs[waiting[0]["iccid"]]["error"]
 
-    # a new number pairs with the oldest waiting SIM and the report says which
+    # a new number is only added as available; the next SIM upload pairs its own SIM with it first
     r = client.post("/api/admin/inventory/numbers", headers=ADMIN, data={"category": "ACME"},
                     files={"file": ("n.csv", "88888888\n")}).json()
-    assert r["pairs"] == [{"iccid": waiting[0]["iccid"], "msisdn": "88888888",
-                           "sim_type": waiting[0]["sim_type"], "category": "ACME"}]
+    assert r["pairs"] == [] and r["paired"] == 0
+    r = client.post("/api/admin/inventory/sims", headers=ADMIN, data={"category": "ACME"},
+                    files={"file": ("s.csv", f"iccid,sim_type\n{iccid(98)},ESIM\n")}).json()
+    assert r["pairs"] == [{"iccid": iccid(98), "msisdn": "88888888", "sim_type": "ESIM", "category": "ACME"}]
 
     # adding to cart returns exactly the lines added; list shows them as in my cart
     cart = client.post(f"/api/signups/{sid}/cart", json={"plan_code": "RAY-8", "sim_type": "ESIM", "quantity": 2}).json()
@@ -499,14 +510,16 @@ def test_upload_history_lists_files_and_rows(client):
     assert (portal["source"], portal["uploaded_by"], portal["signup_id"]) == ("PORTAL", "meiling@acme.sg", sid)
     assert (sims_up["source"], sims_up["kind"], sims_up["total_rows"], sims_up["accepted"], sims_up["rejected"]) == \
         ("BACK_OFFICE", "SIMS", 3, 2, 1)
-    assert nums["kind"] == "NUMBERS" and nums["paired"] == 1
+    assert nums["kind"] == "NUMBERS" and nums["paired"] == 0 and portal["paired"] == 1
     assert [u["filename"] for u in client.get("/api/admin/uploads?kind=NUMBERS", headers=ADMIN).json()["uploads"]] == ["numbers-a.csv"]
 
     d = client.get(f"/api/admin/uploads/{sims_up['id']}", headers=ADMIN).json()
     assert [(x["row"], x["value"], x["result"]) for x in d["rows"]] == [
         (1, iccid(1), "ACCEPTED"), (2, "123", "REJECTED"), (3, iccid(2), "ACCEPTED")]
     first = d["rows"][0]
-    assert first["status"] == "PAIRED" and first["paired_with"] == "81000001"  # live pairing, made by the later number file
+    assert first["status"] == "AVAILABLE" and first["paired_with"] is None  # numbers uploaded later don't pair
+    p = client.get(f"/api/admin/uploads/{portal['id']}", headers=ADMIN).json()["rows"][0]
+    assert (p["value"], p["status"], p["paired_with"]) == (iccid(3), "PAIRED", "81000001")  # its own SIM went first
     assert "18 to 20 digits" in d["rows"][1]["error"]
     rej = client.get(f"/api/admin/uploads/{sims_up['id']}?result=REJECTED", headers=ADMIN).json()
     assert rej["rows_total"] == 1 and rej["rows"][0]["value"] == "123"
