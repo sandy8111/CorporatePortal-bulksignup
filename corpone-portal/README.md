@@ -3,6 +3,8 @@
 Web portal for corporate customers to sign up bulk mobile lines (eSIM or physical SIM), plus a
 back office for SIM/number inventory and blacklist management.
 
+Architecture and end-to-end flow: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## Run locally
 
 ```bash
