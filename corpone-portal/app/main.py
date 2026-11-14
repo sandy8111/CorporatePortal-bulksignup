@@ -34,10 +34,13 @@ STATIC = Path(__file__).resolve().parent.parent / "static"
 
 
 def create_app() -> FastAPI:
-    if get_settings().dev_fixed_otp:
+    if get_settings().fixed_otp_email:
         logging.getLogger(__name__).warning(
-            "TEST MODE: CORPONE_DEV_FIXED_OTP is set - every sign-in code is %s. Never use this in production.",
-            get_settings().dev_fixed_otp)
+            "TEST MODE: %s always signs in with the fixed CORPONE_DEV_FIXED_OTP code. Never use this in production.",
+            get_settings().fixed_otp_email)
+    elif get_settings().dev_fixed_otp:
+        logging.getLogger(__name__).warning(
+            "CORPONE_DEV_FIXED_OTP is set but CORPONE_DEV_FIXED_OTP_EMAIL is not, so test mode is off.")
     app = FastAPI(title="CorpOne Corporate Bulk Line Portal", version="1.0.0")
     app.add_middleware(PortProxyPrefix)
     Base.metadata.create_all(engine)

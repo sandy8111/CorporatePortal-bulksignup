@@ -180,6 +180,7 @@ async function loadStep4() {
   }
   refreshAvailability();
   renderCartBar();
+  loadInventory();
 }
 
 async function refreshAvailability() {
@@ -187,39 +188,115 @@ async function refreshAvailability() {
   $("#availEsim").textContent = a.ESIM; $("#availPhys").textContent = a.PHYSICAL; $("#availCat").textContent = a.category;
 }
 
+const simType = t => (t === "ESIM" ? "eSIM" : "Physical");
+function pill(text, cls) { const c = document.createElement("td"), p = document.createElement("span"); p.className = `pill ${cls}`; p.textContent = text; c.append(p); return c; }
+function mono(text) { const c = td(text); c.className = "mono"; return c; }
+const STATUS = { AVAILABLE: ["Not paired", "wait"], PAIRED: ["Paired · ready", "ready"],
+                 RESERVED: ["Reserved", "reserved"], ASSIGNED: ["Active line", "active"] };
+function statusPill(status, mine = false) {
+  if (!status) return td("–");
+  if (mine) return pill("In your cart", "mine");
+  const [text, cls] = STATUS[status] || [status, "wait"];
+  return pill(text, cls);
+}
+function chip(text, cls) { const c = document.createElement("span"); c.className = `chip ${cls}`; c.textContent = text; return c; }
+
+// ---- SIM upload result: new (paired / waiting), already uploaded (with its pairing), rejected
 $("#simForm").onsubmit = async e => {
   e.preventDefault();
   try {
     const r = await api("POST", `api/signups/${state.signup.id}/sims`, new FormData(e.target));
-    let t = `${r.accepted} SIM(s) accepted, ${r.paired} newly paired with numbers.`;
-    if (r.rejected_count) t += `\n${r.rejected_count} rejected:\n` + r.rejected.slice(0, 20).map(x => `  row ${x.row} (${x.value}): ${x.error}`).join("\n");
-    msg("msgSim", t, r.rejected_count ? "err" : "ok");
+    const dups = r.rejected.filter(x => x.code === "already_uploaded");
+    const bad = r.rejected.filter(x => x.code !== "already_uploaded");
+    const waiting = r.items.filter(x => !x.msisdn).length;
+    msg("msgSim", "");
+    $("#simResultChips").replaceChildren(
+      chip(`${r.accepted} new SIM(s) added`, r.accepted ? "ok" : ""),
+      chip(`${r.paired} paired with a number`, r.paired ? "info" : ""),
+      ...(waiting ? [chip(`${waiting} waiting for a number`, "warn")] : []),
+      ...(dups.length ? [chip(`${dups.length} already uploaded`, "warn")] : []),
+      ...(bad.length ? [chip(`${bad.length} rejected`, "err")] : []));
+    const rows = [
+      ...r.items.map(x => row(["", mono(x.iccid), simType(x.sim_type),
+        x.msisdn ? pill("New · paired", "ready") : pill("New · waiting for number", "wait"), mono(x.msisdn || "–")])),
+      ...dups.map(x => row([x.row, mono(x.value), x.existing ? simType(x.existing.sim_type) : "–",
+        pill(x.error, "dup"), mono(x.existing && x.existing.msisdn || "–")])),
+      ...bad.map(x => row([x.row, mono(x.value), "–", pill(x.error, "bad"), "–"])),
+    ];
+    $("#simResultTable tbody").replaceChildren(...rows);
+    $("#simResult").classList.toggle("hidden", !rows.length);
     if (r.accepted) $("#subSim").classList.add("complete");
     e.target.elements.file.value = "";
     refreshAvailability();
-  } catch (err) { msg("msgSim", err.message); }
+    loadInventory();
+  } catch (err) { msg("msgSim", err.message); $("#simResult").classList.add("hidden"); }
 };
 
+// ---- Add to cart: show exactly which SIM <-> number lines were added
 $("#cartForm").onsubmit = async e => {
   e.preventDefault();
   if (!state.plan) return msg("msg4", "Select a plan above first.");
   const f = Object.fromEntries(new FormData(e.target));
   try {
-    state.signup.cart = await api("POST", `api/signups/${state.signup.id}/cart`,
+    const cart = await api("POST", `api/signups/${state.signup.id}/cart`,
       { plan_code: state.plan, sim_type: f.sim_type, quantity: +f.quantity });
-    msg("msg4", `${f.quantity} ${f.sim_type === "ESIM" ? "eSIM" : "physical SIM"} line(s) paired and added to your cart.`, "ok");
+    state.signup.cart = cart;
+    const added = cart.added || [];
+    const preview = added.slice(0, 5).map(l => `${l.msisdn} ↔ SIM ${l.iccid}`).join("\n");
+    msg("msg4", `Added ${added.length} ${simType(f.sim_type)} line(s) on ${added[0] ? added[0].plan_name : "the selected plan"}:\n` +
+      preview + (added.length > 5 ? `\n…and ${added.length - 5} more (see the cart below)` : ""), "ok");
+    renderCartBar(new Set(added.map(l => l.id)));
     refreshAvailability();
-    renderCartBar();
+    loadInventory();
   } catch (err) { msg("msg4", err.message); }
 };
 
-function renderCartBar() {
+function renderCartBar(highlight = new Set()) {
   const c = state.signup.cart;
   $("#cartCount").textContent = `${c.line_count} line${c.line_count === 1 ? "" : "s"}`;
   $("#cartTotal").textContent = money(c.monthly_total);
   $("#toStep5").disabled = !c.line_count;
   $("#subCart").classList.toggle("complete", c.line_count > 0);
+  $("#cartBox").classList.toggle("hidden", !c.line_count);
+  $("#cartTable tbody").replaceChildren(...c.lines.map((l, i) => {
+    const b = document.createElement("button");
+    b.className = "link"; b.textContent = "Remove";
+    b.onclick = async () => {
+      state.signup.cart = await api("DELETE", `api/signups/${state.signup.id}/cart/${l.id}`);
+      msg("msg4", `Removed ${l.msisdn}. The SIM and number stay paired and are free to use again.`, "info");
+      renderCartBar(); refreshAvailability(); loadInventory();
+    };
+    const cell = document.createElement("td"); cell.append(b);
+    const r = row([i + 1, mono(l.msisdn), mono(l.iccid), simType(l.sim_type), l.plan_name, money(l.monthly_price), cell]);
+    if (highlight.has(l.id)) r.className = "flash";
+    return r;
+  }));
 }
+
+// ---- SIM inventory list for this category
+const inv = { filter: "", q: "", timer: null };
+const when = iso => (iso ? iso.slice(0, 16).replace("T", " ") : "–");
+async function loadInventory() {
+  const params = new URLSearchParams({ limit: "200" });
+  if (inv.filter) params.set("status", inv.filter);
+  if (inv.q) params.set("q", inv.q);
+  let d;
+  try { d = await api("GET", `api/signups/${state.signup.id}/sims?${params}`); }
+  catch (err) { $("#invShowing").textContent = `Could not load SIMs: ${err.message}`; return; }
+  $("#invCat").textContent = d.category;
+  const all = (d.counts.AVAILABLE || 0) + (d.counts.PAIRED || 0) + (d.counts.MINE || 0);
+  document.querySelectorAll("#invTabs button").forEach(b => {
+    b.classList.toggle("on", b.dataset.f === inv.filter);
+    $("span", b).textContent = b.dataset.f ? (d.counts[b.dataset.f] ?? 0) : all;
+  });
+  $("#invShowing").textContent = d.total > d.pairs.length ? `Showing ${d.pairs.length} of ${d.total}` : `${d.total} SIM(s)`;
+  $("#invTable tbody").replaceChildren(...(d.pairs.length ? d.pairs.map(x =>
+    row([mono(x.iccid), simType(x.sim_type), statusPill(x.sim_status, x.in_my_cart), mono(x.msisdn || "–"),
+         x.msisdn ? statusPill(x.number_status, x.in_my_cart) : pill("Waiting for number", "wait"), when(x.paired_at)]))
+    : [row([Object.assign(td(inv.q || inv.filter ? "No SIMs match." : "No SIMs uploaded for this category yet."), { colSpan: 6 })])]));
+}
+document.querySelectorAll("#invTabs button").forEach(b => b.onclick = () => { inv.filter = b.dataset.f; loadInventory(); });
+$("#invSearch").oninput = e => { clearTimeout(inv.timer); inv.timer = setTimeout(() => { inv.q = e.target.value.trim(); loadInventory(); }, 250); };
 $("#toStep5").onclick = () => go(5);
 
 // ---------------------------------------------------------------- step 5: review
@@ -348,7 +425,7 @@ async function resume() {
 
 api("GET", "api/auth/options").then(o => {
   if (!o.test_mode) return;
-  $("#testCode").textContent = o.test_code;
+  $("#testEmail").textContent = o.test_email;
   $("#testMode").classList.remove("hidden");
 }).catch(() => {});
 signedIn().catch(() => go(1));

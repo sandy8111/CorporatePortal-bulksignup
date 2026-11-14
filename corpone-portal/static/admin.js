@@ -29,6 +29,11 @@ $("#saveToken").onclick = async () => {
 
 function reportText(r) {
   let t = `${r.accepted} accepted, ${r.paired} paired.`;
+  if (r.paired_existing) t += ` ${r.paired_existing} older waiting item(s) were also paired.`;
+  if (r.pairs.length) t += "\nPaired:\n" + r.pairs.slice(0, 50).map(p => `  SIM ${p.iccid} ↔ ${p.msisdn} (${p.sim_type})`).join("\n")
+    + (r.paired > 50 ? `\n  …and ${r.paired - 50} more (see SIM ↔ number pairing)` : "");
+  const waiting = r.items.filter(x => !(x.iccid && x.msisdn)).length;
+  if (waiting) t += `\n${waiting} new item(s) still waiting to be paired.`;
   if (r.rejected_count) t += `\n${r.rejected_count} rejected:\n` + r.rejected.slice(0, 50).map(x => `  row ${x.row} (${x.value}): ${x.error}`).join("\n");
   return t;
 }
@@ -42,6 +47,7 @@ for (const [form, path, out] of [["#simForm", "sims", "msgSim"], ["#numForm", "n
       const r = await api("POST", `api/admin/inventory/${path}`, fd);
       msg(out, reportText(r), r.rejected_count ? "err" : "ok");
       e.target.reset(); loadInventory();
+      if (pair.category) loadPairings();
     } catch (err) { msg(out, err.message); }
   };
 }
@@ -51,6 +57,56 @@ async function loadInventory() {
   $("#invTable tbody").replaceChildren(...rows.map(c => row([c.category, fmt(c.sims.ESIM), fmt(c.sims.PHYSICAL), fmt(c.numbers), fmt(c.paired_available)])));
 }
 $("#refreshInv").onclick = loadInventory;
+
+// ---- SIM <-> number pairing list, with the status of both sides
+const PAGE = 100;
+const pair = { category: "", q: "", filter: "", offset: 0 };
+const STATUS = { AVAILABLE: ["Not paired", "PENDING"], PAIRED: ["Paired · ready", "COMPLETED"],
+                 RESERVED: ["Reserved", "SUBMITTED"], ASSIGNED: ["Active line", "PROVISIONED"] };
+function statusCell(status, waitingText) {
+  const c = document.createElement("td");
+  if (!status) { c.textContent = waitingText; c.style.color = "var(--muted)"; return c; }
+  const [text, cls] = STATUS[status] || [status, ""];
+  const p = document.createElement("span"); p.className = `pill ${cls}`; p.textContent = text; c.append(p);
+  return c;
+}
+const mono = t => { const c = td(t ?? "–"); c.className = "mono"; return c; };
+const when = iso => (iso ? iso.slice(0, 16).replace("T", " ") : "–");
+
+async function loadPairings() {
+  const params = new URLSearchParams({ category: pair.category, limit: PAGE, offset: pair.offset });
+  if (pair.filter) params.set("status", pair.filter);
+  if (pair.q) params.set("q", pair.q);
+  let d;
+  try { d = await api("GET", `api/admin/inventory/pairings?${params}`); }
+  catch (err) { msg("msgPair", err.message); return; }
+  $("#msgPair").className = "msg hidden";
+  $("#pairTabs").classList.remove("hidden");
+  const sims = ["AVAILABLE", "PAIRED", "RESERVED", "ASSIGNED"].reduce((a, k) => a + (d.counts[k] || 0), 0);
+  document.querySelectorAll("#pairTabs button").forEach(b => {
+    b.classList.toggle("on", b.dataset.f === pair.filter);
+    b.querySelector("span").textContent = b.dataset.f ? (d.counts[b.dataset.f] ?? 0) : sims;
+  });
+  $("#pairTable tbody").replaceChildren(...(d.pairs.length ? d.pairs.map(x => {
+    const r = row([mono(x.iccid), x.sim_type ? (x.sim_type === "ESIM" ? "eSIM" : "Physical") : "–",
+      statusCell(x.sim_status, "No SIM yet"), mono(x.msisdn), statusCell(x.number_status, "No number yet"), when(x.paired_at)]);
+    if (x.status_mismatch) { r.title = "SIM and number status differ"; r.style.background = "var(--err-soft)"; }
+    return r;
+  }) : [row([Object.assign(td("Nothing matches."), { colSpan: 6 })])]));
+  const end = Math.min(d.offset + d.pairs.length, d.total);
+  $("#pairShowing").textContent = d.total ? `${d.offset + 1}–${end} of ${d.total}` : "";
+  $("#pairPrev").classList.toggle("hidden", d.offset === 0);
+  $("#pairNext").classList.toggle("hidden", end >= d.total);
+}
+$("#pairForm").onsubmit = e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  Object.assign(pair, { category: f.category.trim().toUpperCase(), q: f.q.trim(), offset: 0 });
+  loadPairings();
+};
+document.querySelectorAll("#pairTabs button").forEach(b => b.onclick = () => { pair.filter = b.dataset.f; pair.offset = 0; loadPairings(); });
+$("#pairPrev").onclick = () => { pair.offset = Math.max(0, pair.offset - PAGE); loadPairings(); };
+$("#pairNext").onclick = () => { pair.offset += PAGE; loadPairings(); };
 
 $("#blSubject").onchange = e => {
   $("#blIdType").innerHTML = e.target.value === "COMPANY" ? "<option>UEN</option>" : "<option>NRIC</option><option>FIN</option><option>PASSPORT</option>";

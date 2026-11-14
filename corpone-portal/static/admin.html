@@ -51,6 +51,26 @@
   </section>
 
   <section class="card">
+    <h2>SIM ↔ number pairing</h2>
+    <form id="pairForm" class="row">
+      <div><label>Category</label><input name="category" required placeholder="e.g. ACME-CORP"></div>
+      <div><label>Search</label><input name="q" type="search" placeholder="ICCID or number"></div>
+      <div style="flex:0"><button>Show</button></div>
+    </form>
+    <div class="tabs hidden" id="pairTabs" style="margin-top:12px">
+      <button type="button" data-f="">All SIMs <span></span></button>
+      <button type="button" data-f="PAIRED">Paired · ready <span></span></button>
+      <button type="button" data-f="RESERVED">Reserved <span></span></button>
+      <button type="button" data-f="ASSIGNED">Active <span></span></button>
+      <button type="button" data-f="AVAILABLE">SIMs waiting for a number <span></span></button>
+      <button type="button" data-f="NUMBERS_WAITING">Numbers waiting for a SIM <span></span></button>
+    </div>
+    <div class="msg hidden" id="msgPair"></div>
+    <div class="scroll"><table id="pairTable"><thead><tr><th>SIM ICCID</th><th>Type</th><th>SIM status</th><th>MSISDN</th><th>Number status</th><th>Paired at</th></tr></thead><tbody></tbody></table></div>
+    <div class="actions"><button type="button" class="secondary hidden" id="pairPrev">← Previous</button><span class="hint" id="pairShowing" style="margin:0"></span><button type="button" class="secondary hidden" id="pairNext">Next →</button></div>
+  </section>
+
+  <section class="card">
     <h2>Blacklist</h2>
     <form id="blForm">
       <div class="grid">

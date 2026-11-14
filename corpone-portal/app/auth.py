@@ -43,10 +43,11 @@ def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def _generate_code() -> str:
-    fixed = get_settings().dev_fixed_otp
-    if fixed:  # testing only, see Settings.dev_fixed_otp
-        return fixed
+def _generate_code(email: str) -> str:
+    s = get_settings()
+    # Testing only (see Settings.dev_fixed_otp): fixed code for the one configured test account.
+    if s.fixed_otp_email and email == s.fixed_otp_email:
+        return s.dev_fixed_otp
     return f"{secrets.randbelow(10**6):06d}"
 
 
@@ -71,7 +72,7 @@ def request_otp(db: Session, email: str, remote_ip: str) -> None:
     for ch in recent:
         if ch.consumed_at is None:
             ch.consumed_at = now
-    code = _generate_code()
+    code = _generate_code(email)
     db.add(OtpChallenge(email=email, code_hash=_code_hash(email, code),
                         expires_at=now + timedelta(seconds=s.otp_ttl_seconds)))
     db.commit()

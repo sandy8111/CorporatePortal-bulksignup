@@ -156,3 +156,33 @@ dd { margin: 0; font-weight: 500; }
   .steps .t { font-size: 12.5px; margin-top: 4px; }
   .plans, .summary-grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- SIM lists, pairing results, cart */
+.scroll { max-height: 340px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.scroll table th { position: sticky; top: 0; z-index: 1; }
+.scroll table tr:last-child td { border-bottom: 0; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 10px; }
+.chip { font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: 12px; background: #edf0f5; }
+.chip.ok { background: var(--ok-soft); color: var(--ok); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+.chip.err { background: var(--err-soft); color: var(--err); }
+.chip.info { background: var(--brand-soft); color: var(--brand-dark); }
+.pill.ready { background: var(--ok-soft); color: var(--ok); }
+.pill.wait { background: #edf0f5; color: var(--muted); }
+.pill.mine { background: var(--brand-soft); color: var(--brand-dark); }
+.pill.reserved { background: var(--warn-soft); color: var(--warn); }
+.pill.active { background: #1b2533; color: #fff; }
+.pill.dup { background: #fff4e5; color: #8a4b00; }
+.pill.bad { background: var(--err-soft); color: var(--err); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.pairarrow { color: var(--muted); margin: 0 4px; }
+tr.flash td { animation: flash 2.5s ease-out; }
+@keyframes flash { 0% { background: #dbe8ff; } 100% { background: transparent; } }
+.inv { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 18px; }
+.inv-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; gap: 10px; flex-wrap: wrap; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+.tabs button { background: #fff; color: var(--ink); border: 1px solid #cfd6e2; padding: 6px 12px; font-weight: 500; font-size: 13px; border-radius: 16px; }
+.tabs button span { color: var(--muted); font-weight: 600; margin-left: 2px; }
+.tabs button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.tabs button.on span { color: #dbe8ff; }
+.tabs input { width: 220px; margin-left: auto; padding: 6px 10px; border-radius: 16px; font-size: 13px; }

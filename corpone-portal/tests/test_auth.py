@@ -78,12 +78,36 @@ def test_ao_email_must_match_login(client):
     assert r.status_code == 200 and r.json()["account_officer"]["email"] == AO_EMAIL
 
 
-def test_fixed_test_otp(anon, monkeypatch):
+def test_fixed_test_otp_only_for_test_account(anon, monkeypatch):
     from app.config import get_settings
     assert anon.get("/api/auth/options").json() == {"test_mode": False}
     monkeypatch.setattr(get_settings(), "dev_fixed_otp", "123456")
-    assert anon.get("/api/auth/options").json() == {"test_mode": True, "test_code": "123456"}
+    # the code alone does nothing: the test account must be named explicitly
+    assert anon.get("/api/auth/options").json() == {"test_mode": False}
+    monkeypatch.setattr(get_settings(), "dev_fixed_otp_email", "Admin@Corp1.com.sg")
+    # the fixed code is never sent to the browser
+    assert anon.get("/api/auth/options").json() == {"test_mode": True, "test_email": "admin@corp1.com.sg"}
+
+    # the test account (any letter case) signs in with the fixed code
+    anon.post("/api/auth/otp/request", json={"email": "Admin@Corp1.com.sg"})
+    assert last_otp("admin@corp1.com.sg") == "123456"
+    assert anon.post("/api/auth/otp/verify", json={"email": "admin@corp1.com.sg", "code": "654321"}).status_code == 401
+    r = anon.post("/api/auth/otp/verify", json={"email": "admin@corp1.com.sg", "code": "123456"})
+    assert r.status_code == 200 and anon.get("/api/auth/me").json()["email"] == "admin@corp1.com.sg"
+
+    # any other email still gets a random code, so 123456 does not work there
+    monkeypatch.setattr("app.auth._generate_code", lambda email: "777777" if email != "admin@corp1.com.sg" else "123456")
     anon.post("/api/auth/otp/request", json={"email": "tester@acme.sg"})
-    assert anon.post("/api/auth/otp/verify", json={"email": "tester@acme.sg", "code": "654321"}).status_code == 401
-    r = anon.post("/api/auth/otp/verify", json={"email": "tester@acme.sg", "code": "123456"})
-    assert r.status_code == 200 and anon.get("/api/auth/me").json()["email"] == "tester@acme.sg"
+    assert last_otp("tester@acme.sg") == "777777"
+    assert anon.post("/api/auth/otp/verify", json={"email": "tester@acme.sg", "code": "123456"}).status_code == 401
+
+
+def test_fixed_code_not_used_for_other_emails(monkeypatch):
+    from app import auth
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "dev_fixed_otp", "123456")
+    assert len({auth._generate_code("admin@corp1.com.sg") for _ in range(20)}) > 1  # no email set: random
+    monkeypatch.setattr(get_settings(), "dev_fixed_otp_email", "admin@corp1.com.sg")
+    assert auth._generate_code("admin@corp1.com.sg") == "123456"
+    others = {auth._generate_code("someone@acme.sg") for _ in range(20)}
+    assert others != {"123456"} and all(len(c) == 6 and c.isdigit() for c in others)

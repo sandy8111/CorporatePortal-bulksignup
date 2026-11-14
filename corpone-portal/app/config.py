@@ -41,8 +41,16 @@ class Settings(BaseSettings):
     otp_max_per_15min: int = 5
     session_ttl_hours: int = 8
     cookie_secure: bool = False                 # set true behind HTTPS
-    # TESTING ONLY: when set (6 digits, e.g. 123456) every OTP is this value. Never set in production.
+    # TESTING ONLY: when BOTH are set, the OTP for dev_fixed_otp_email is always dev_fixed_otp (6 digits).
+    # Every other email still gets a random code. Never set in production.
     dev_fixed_otp: str = ""
+    dev_fixed_otp_email: str = ""
+
+    @property
+    def fixed_otp_email(self) -> str:
+        """The test account that uses the fixed code, or "" when test mode is off."""
+        email = self.dev_fixed_otp_email.strip().lower()
+        return email if self.dev_fixed_otp and email else ""
 
     # --- Inbound API gateway
     gateway_default_rate_per_min: int = 60

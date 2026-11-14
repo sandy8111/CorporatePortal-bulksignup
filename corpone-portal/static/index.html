@@ -39,7 +39,7 @@
       <div class="login-wrap">
         <div class="eyebrow">Step 1 of 6</div>
         <h2>Sign in as account officer</h2>
-        <div class="msg info hidden" id="testMode" style="margin:0 0 16px">Test environment: the sign-in code is always <b id="testCode"></b>.</div>
+        <div class="msg info hidden" id="testMode" style="margin:0 0 16px">Test environment: <b id="testEmail"></b> signs in with the fixed test code your team was given. Other emails receive a normal code by email.</div>
         <p class="lead">We'll email you a 6-digit code. Use your work email: eSIM QR codes and order updates are sent there.</p>
         <form id="otpRequestForm">
           <label>Work email</label><input name="email" type="email" required autocomplete="email" placeholder="name@company.com.sg">
@@ -126,6 +126,10 @@
           </form>
           <div class="hint">ICCIDs must be numeric, 18–20 digits. New SIMs are paired automatically with numbers in your category.</div>
           <div class="msg hidden" id="msgSim"></div>
+          <div id="simResult" class="hidden">
+            <div class="chips" id="simResultChips"></div>
+            <div class="scroll"><table id="simResultTable"><thead><tr><th>Row</th><th>ICCID</th><th>Type</th><th>Result</th><th>Paired number</th></tr></thead><tbody></tbody></table></div>
+          </div>
         </div>
         <div class="sub" id="subCart">
           <h4>Pair &amp; add lines</h4>
@@ -141,7 +145,25 @@
             <div style="flex:0"><button type="submit">Add to cart</button></div>
           </form>
           <div class="msg hidden" id="msg4"></div>
+          <div id="cartBox" class="hidden" style="margin-top:14px">
+            <h4 style="margin:0 0 8px">Lines in your cart</h4>
+            <div class="scroll"><table id="cartTable"><thead><tr><th>#</th><th>Mobile number</th><th>SIM ICCID</th><th>Type</th><th>Plan</th><th>$/month</th><th></th></tr></thead><tbody></tbody></table></div>
+          </div>
         </div>
+      </div>
+      <div class="inv">
+        <div class="inv-head">
+          <h3 style="margin:0">SIM inventory · <span id="invCat"></span></h3>
+          <span class="hint" id="invShowing" style="margin:0"></span>
+        </div>
+        <div class="tabs" id="invTabs">
+          <button type="button" data-f="">All <span></span></button>
+          <button type="button" data-f="PAIRED">Paired · ready <span></span></button>
+          <button type="button" data-f="AVAILABLE">Not paired <span></span></button>
+          <button type="button" data-f="MINE">In my cart <span></span></button>
+          <input id="invSearch" type="search" placeholder="Search ICCID or number">
+        </div>
+        <div class="scroll"><table id="invTable"><thead><tr><th>SIM ICCID</th><th>Type</th><th>SIM status</th><th>Paired number</th><th>Number status</th><th>Paired</th></tr></thead><tbody></tbody></table></div>
       </div>
       <div class="cartbar"><div><div class="muted">Cart</div><div class="big" id="cartCount">0 lines</div></div><div><div class="muted">Monthly</div><div class="big" id="cartTotal">$0.00</div></div><span style="flex:1"></span><button id="toStep5" disabled>Review cart →</button></div>
       <div class="actions"><button type="button" class="secondary" data-back="3">← Back</button><span class="spacer"></span></div>

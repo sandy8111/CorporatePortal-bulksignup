@@ -37,7 +37,8 @@ def start(client, category="ACME"):
 
 def test_full_signup_flow(client, s3):
     report = load_inventory(client)
-    assert report == {"accepted": 5, "rejected_count": 0, "rejected": [], "paired": 5}
+    assert (report["accepted"], report["rejected_count"], report["paired"]) == (5, 0, 5)
+    assert len(report["pairs"]) == 5 and all(p["iccid"] and p["msisdn"] for p in report["pairs"])
 
     sid = start(client)
     keys = [o["Key"] for o in s3.list_objects_v2(Bucket="corpone-test-contracts")["Contents"]]
@@ -202,3 +203,80 @@ def test_served_with_and_without_port_proxy_prefix(client):
         assert client.get(prefix + "/static/app.js").status_code == 200
         assert client.get(prefix + "/api/plans").status_code == 200
         assert client.get(prefix + "/admin").status_code == 200
+
+
+def test_sim_list_pairing_and_cart_details(client):
+    load_inventory(client, esim=3, physical=1, numbers=3)  # 4 SIMs, 3 numbers -> 1 SIM waits
+    sid = start(client)
+
+    lst = client.get(f"/api/signups/{sid}/sims").json()
+    assert lst["total"] == 4 and lst["counts"] == {"AVAILABLE": 1, "PAIRED": 3, "MINE": 0}
+    paired = [x for x in lst["pairs"] if x["sim_status"] == "PAIRED"]
+    assert all(x["msisdn"] and x["number_status"] == "PAIRED" for x in paired)
+    waiting = [x for x in lst["pairs"] if x["sim_status"] == "AVAILABLE"]
+    assert waiting[0]["msisdn"] is None and waiting[0]["number_status"] is None
+
+    # re-uploading existing SIMs says whether and with which number they are paired
+    sims = f"iccid,sim_type\n{paired[0]['iccid']},ESIM\n{waiting[0]['iccid']},PHYSICAL\n{iccid(99)},ESIM\n"
+    r = client.post(f"/api/signups/{sid}/sims", files={"file": ("s.csv", sims)}).json()
+    assert r["accepted"] == 1 and r["items"][0] == {"iccid": iccid(99), "sim_type": "ESIM",
+                                                    "category": "ACME", "msisdn": None}
+    errs = {x["value"]: x for x in r["rejected"]}
+    assert f"paired with {paired[0]['msisdn']}" in errs[paired[0]["iccid"]]["error"]
+    assert errs[paired[0]["iccid"]]["existing"]["msisdn"] == paired[0]["msisdn"]
+    assert "not paired yet" in errs[waiting[0]["iccid"]]["error"]
+
+    # a new number pairs with the oldest waiting SIM and the report says which
+    r = client.post("/api/admin/inventory/numbers", headers=ADMIN, data={"category": "ACME"},
+                    files={"file": ("n.csv", "88888888\n")}).json()
+    assert r["pairs"] == [{"iccid": waiting[0]["iccid"], "msisdn": "88888888",
+                           "sim_type": waiting[0]["sim_type"], "category": "ACME"}]
+
+    # adding to cart returns exactly the lines added; list shows them as in my cart
+    cart = client.post(f"/api/signups/{sid}/cart", json={"plan_code": "RAY-8", "sim_type": "ESIM", "quantity": 2}).json()
+    assert len(cart["added"]) == 2 and cart["line_count"] == 2
+    mine = client.get(f"/api/signups/{sid}/sims?status=MINE").json()
+    assert {x["iccid"] for x in mine["pairs"]} == {l["iccid"] for l in cart["added"]}
+    assert all(x["in_my_cart"] and x["sim_status"] == x["number_status"] == "RESERVED" for x in mine["pairs"])
+    assert client.get(f"/api/signups/{sid}/sims?q={cart['added'][0]['msisdn']}").json()["total"] == 1
+
+
+def test_ao_list_hides_other_carts_and_bad_params(client):
+    load_inventory(client, esim=3, physical=0, numbers=3)
+    other, mine = start(client), start(client)
+    client.post(f"/api/signups/{other}/cart", json={"plan_code": "RAY-8", "sim_type": "ESIM", "quantity": 2})
+    lst = client.get(f"/api/signups/{mine}/sims").json()
+    assert lst["total"] == 1 and set(lst["counts"]) == {"AVAILABLE", "PAIRED", "MINE"}
+    assert all(x["sim_status"] == "PAIRED" for x in lst["pairs"])
+    for bad in ("status=RESERVED", "status=ASSIGNED", "limit=-1", "limit=0", "limit=501", "offset=-1"):
+        assert client.get(f"/api/signups/{mine}/sims?{bad}").status_code in (400, 422), bad
+    # LIKE wildcards are literal, not "match everything"
+    assert client.get(f"/api/signups/{mine}/sims?q=_").json()["total"] == 0
+    assert client.get(f"/api/signups/{mine}/sims?q=%25").json()["total"] == 0
+
+
+def test_admin_pairing_list_shows_both_sides(client):
+    load_inventory(client, esim=2, physical=0, numbers=4)  # 2 pairs + 2 numbers waiting for a SIM
+    d = client.get("/api/admin/inventory/pairings?category=ACME", headers=ADMIN).json()
+    assert d["counts"]["PAIRED"] == 2 and d["counts"]["NUMBERS_WAITING"] == 2
+    assert all(p["iccid"] and p["msisdn"] and p["sim_status"] == p["number_status"] == "PAIRED"
+               and not p["status_mismatch"] for p in d["pairs"])
+    w = client.get("/api/admin/inventory/pairings?category=ACME&status=NUMBERS_WAITING", headers=ADMIN).json()
+    assert w["total"] == 2 and all(p["iccid"] is None and p["number_status"] == "AVAILABLE" for p in w["pairs"])
+    assert client.get("/api/admin/inventory/pairings?category=ACME&status=MINE", headers=ADMIN).status_code == 400
+    assert client.get("/api/admin/inventory/pairings?category=ACME").status_code == 401
+
+
+def test_other_category_sim_not_revealed(client):
+    load_inventory(client, category="OTHERCO", esim=1, physical=0, numbers=1)
+    sid = start(client)  # category ACME
+    r = client.post(f"/api/signups/{sid}/sims", files={"file": ("s.csv", f"{iccid(0)}\n")}).json()
+    assert r["rejected"][0]["error"] == "Already uploaded under another category"
+    assert r["rejected"][0]["existing"] is None
+    # naming the other category in the row is refused before anything about the SIM is looked at
+    r = client.post(f"/api/signups/{sid}/sims", files={"file": ("s.csv", f"iccid,category\n{iccid(0)},OTHERCO\n")}).json()
+    assert r["rejected"][0]["error"] == "Category must be ACME for this sign-up" and "existing" not in r["rejected"][0]
+    # an invalid category in the row does not reveal details either (admin upload, no default)
+    r = client.post("/api/admin/inventory/sims", headers=ADMIN,
+                    files={"file": ("s.csv", f"iccid,sim_type,category\n{iccid(0)},ESIM,bad!\n")}).json()
+    assert "existing" not in r["rejected"][0] and "Category" in r["rejected"][0]["error"]

@@ -2,7 +2,7 @@
 import json
 from decimal import Decimal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -172,6 +172,20 @@ async def upload_signup_sims(signup_id: str, file: UploadFile = File(...),
     return report.as_dict()
 
 
+@router.get("/signups/{signup_id}/sims")
+def list_signup_sims(signup_id: str, status: str | None = None, q: str | None = None,
+                     limit: int = Query(200, ge=1, le=inventory.LIST_CAP), offset: int = Query(0, ge=0),
+                     ao: AoSession = Depends(current_ao), db: Session = Depends(get_db)):
+    """Free SIM <-> number pairs in this sign-up's category plus this sign-up's own cart lines.
+    status: AVAILABLE|PAIRED|MINE. Lines reserved by other sign-ups and live lines are not shown."""
+    s = _owned(db, signup_id, ao)
+    try:
+        return inventory.list_pairings(db, s.category, status=status, q=q, limit=limit, offset=offset,
+                                       signup_id=s.id)
+    except ValidationError as exc:
+        _bad(str(exc))
+
+
 @router.get("/signups/{signup_id}/availability")
 def availability(signup_id: str, ao: AoSession = Depends(current_ao), db: Session = Depends(get_db)):
     s = _draft(db, signup_id, ao)
@@ -187,11 +201,14 @@ def add_to_cart(signup_id: str, body: CartAdd, ao: AoSession = Depends(current_a
     if not plan:
         _bad("Unknown plan")
     try:
-        inventory.allocate(db, s, plan, body.sim_type, body.quantity)
+        added = inventory.allocate(db, s, plan, body.sim_type, body.quantity)
     except ValidationError as exc:
         _bad(str(exc), 409)
+    added_ids = {cl.id for cl in added}
     db.refresh(s)
-    return _cart(s)
+    cart = _cart(s)
+    cart["added"] = [l for l in cart["lines"] if l["id"] in added_ids]
+    return cart
 
 
 @router.delete("/signups/{signup_id}/cart/{line_id}")

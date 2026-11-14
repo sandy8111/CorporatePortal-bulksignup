@@ -26,9 +26,9 @@ def _fail(exc: auth.OtpError):
 
 @router.get("/options")
 def login_options():
-    """Lets the login page show a test-mode banner when a fixed OTP is configured."""
-    fixed = get_settings().dev_fixed_otp
-    return {"test_mode": True, "test_code": fixed} if fixed else {"test_mode": False}
+    """Lets the login page show a test-mode banner. The fixed code itself is never sent to the browser."""
+    email = get_settings().fixed_otp_email
+    return {"test_mode": True, "test_email": email} if email else {"test_mode": False}
 
 
 @router.post("/otp/request", status_code=202)

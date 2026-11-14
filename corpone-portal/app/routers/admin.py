@@ -1,7 +1,7 @@
 """Back-office API: inventory, blacklist, merchants, provisioning retries. Requires X-Admin-Token."""
 import secrets
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -47,6 +47,19 @@ async def upload_numbers(file: UploadFile = File(...), category: str | None = Fo
         raise HTTPException(400, str(exc))
 
 
+@router.get("/inventory/pairings")
+def admin_list_pairings(category: str, status: str | None = None, q: str | None = None,
+                        limit: int = Query(200, ge=1, le=inventory.LIST_CAP), offset: int = Query(0, ge=0),
+                        db: Session = Depends(get_db)):
+    """SIM <-> number pairs with the status of both sides.
+    status: AVAILABLE|PAIRED|RESERVED|ASSIGNED (by SIM) or NUMBERS_WAITING (numbers with no SIM)."""
+    try:
+        return inventory.list_pairings(db, validate_category(category), status=status, q=q,
+                                       limit=limit, offset=offset)
+    except ValidationError as exc:
+        raise HTTPException(400, str(exc))
+
+
 @router.get("/inventory/summary")
 def inventory_summary(db: Session = Depends(get_db)):
     return inventory.summary(db)
@@ -55,7 +68,7 @@ def inventory_summary(db: Session = Depends(get_db)):
 @router.post("/inventory/pair")
 def pair(category: str, db: Session = Depends(get_db)):
     try:
-        n = inventory.auto_pair(db, validate_category(category))
+        n = len(inventory.auto_pair(db, validate_category(category)))
     except ValidationError as exc:
         raise HTTPException(400, str(exc))
     db.commit()

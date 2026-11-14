@@ -40,9 +40,12 @@ Security rules:
 - Limits: one resend per 30 seconds, 5 codes per email per 15 minutes, and 20 requests per IP
   per 15 minutes.
 
-**Test environments without email:** set `CORPONE_DEV_FIXED_OTP=123456` and every sign-in code is
-`123456`. The login page shows a "test environment" banner and the server logs a warning at
-startup. Expiry, attempt limits and rate limits still apply. Never set this in production.
+**Test environments without email:** set both `CORPONE_DEV_FIXED_OTP=123456` and
+`CORPONE_DEV_FIXED_OTP_EMAIL=admin@corp1.com.sg`. That one account then always signs in with
+`123456`. Test mode is off unless both are set. Every other email still gets a random code by
+email. The login page shows a "test environment" banner naming the account (never the code), and
+the server logs a warning at startup. Expiry, attempt limits and rate limits still apply. Never set
+this in production.
 
 Every sign-up belongs to the email that created it. Another AO gets a 404, and order status is
 visible only to that account's AO. The AO email on the order is always the verified login email,
@@ -137,6 +140,16 @@ The portal compares the results with what the AO entered and shows them at the r
   **same category**, oldest first. Status lifecycle: `AVAILABLE → PAIRED → RESERVED (cart) →
   ASSIGNED (line)`.
 - SIMs that an AO uploads in the wizard are locked to that sign-up's category.
+- The upload result lists every SIM ↔ number pair it made. A SIM or number that was already
+  uploaded is reported with its current pairing, but only when it is in the same category as the
+  row. Otherwise the result just says "already uploaded under another category".
+- **Pairing view.** The back office card "SIM ↔ number pairing"
+  (`GET /api/admin/inventory/pairings?category=…`) lists each SIM with its MSISDN and the status
+  of both sides. You can filter by status and see numbers still waiting for a SIM
+  (`status=NUMBERS_WAITING`). A row is highlighted if the SIM and number statuses ever differ. In
+  the portal, the AO's list (`GET /api/signups/{id}/sims`) shows only free lines (not paired yet,
+  or paired and ready) and that sign-up's own cart lines. It never shows lines reserved by other
+  sign-ups or live lines. Page size is 1–500.
 
 ## Blacklist
 
