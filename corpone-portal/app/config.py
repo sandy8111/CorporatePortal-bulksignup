@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     otp_max_per_15min: int = 5
     session_ttl_hours: int = 8
     cookie_secure: bool = False                 # set true behind HTTPS
+    request_log: bool = True                    # one log line per API call (logger "corpone.api")
     # TESTING ONLY: when BOTH are set, the OTP for dev_fixed_otp_email is always dev_fixed_otp (6 digits).
     # Every other email still gets a random code. Never set in production.
     dev_fixed_otp: str = ""

@@ -125,7 +125,7 @@ def _lookup(db: Session, token: str | None) -> AoSession | None:
     return sess
 
 
-def current_ao(db: Session = Depends(get_db),
+def current_ao(request: Request, db: Session = Depends(get_db),
                corpone_session: str | None = Cookie(default=None),
                authorization: str | None = Header(default=None)) -> AoSession:
     """Dependency: the logged-in account officer (cookie for the browser, Bearer for API use)."""
@@ -135,6 +135,7 @@ def current_ao(db: Session = Depends(get_db),
     sess = _lookup(db, token)
     if sess is None:
         raise HTTPException(401, "Please sign in with your email one-time code")
+    request.state.ao_email = sess.email  # shown in the request log
     return sess
 
 

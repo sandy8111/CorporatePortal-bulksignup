@@ -10,10 +10,11 @@ from app.auth import purge_expired
 from app.config import get_settings
 from app.db import Base, SessionLocal, engine
 from app.gateway.inbound import gateway_app
+from app.request_log import RequestLog
 from app.routers import admin, auth, signups
 from app.seed import seed
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 _PORT_PREFIX = re.compile(r"^/ports/\d+(?=/|$)")
 
 
@@ -43,6 +44,8 @@ def create_app() -> FastAPI:
             "CORPONE_DEV_FIXED_OTP is set but CORPONE_DEV_FIXED_OTP_EMAIL is not, so test mode is off.")
     app = FastAPI(title="CorpOne Corporate Bulk Line Portal", version="1.0.0")
     app.add_middleware(PortProxyPrefix)
+    if get_settings().request_log:
+        app.add_middleware(RequestLog)  # added last = outermost, so it times the whole request
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         seed(db)

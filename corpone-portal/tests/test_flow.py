@@ -280,3 +280,22 @@ def test_other_category_sim_not_revealed(client):
     r = client.post("/api/admin/inventory/sims", headers=ADMIN,
                     files={"file": ("s.csv", f"iccid,sim_type,category\n{iccid(0)},ESIM,bad!\n")}).json()
     assert "existing" not in r["rejected"][0] and "Category" in r["rejected"][0]["error"]
+
+
+def test_request_log_line_and_request_id(client, caplog):
+    import logging
+    with caplog.at_level(logging.INFO, logger="corpone.api"):
+        r = client.get("/api/signups")
+        client.get("/api/admin/inventory/summary", headers=ADMIN)
+        client.get("/api/admin/inventory/summary")
+        client.get("/static/app.js")
+        client.post("/api/auth/otp/verify", json={"email": "x@acme.sg", "code": "123456"})
+        echoed = client.get("/healthz", headers={"X-Request-ID": "abc-123"})
+    rid = r.headers["x-request-id"]
+    lines = [rec.getMessage() for rec in caplog.records if rec.name == "corpone.api"]
+    assert any(l.startswith("GET /api/signups -> 200") and f"by=meiling@acme.sg id={rid}" in l for l in lines)
+    assert any("/api/admin/inventory/summary -> 200" in l and "by=admin" in l for l in lines)
+    assert any("/api/admin/inventory/summary -> 401" in l and "by=-" in l for l in lines)
+    assert not any("/static/" in l or "/healthz" in l for l in lines)
+    assert not any("123456" in l for l in lines)  # bodies are never logged
+    assert "x-request-id" not in echoed.headers  # health checks are skipped entirely

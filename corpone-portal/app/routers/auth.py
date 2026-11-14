@@ -41,11 +41,12 @@ def request_code(body: OtpRequest, request: Request, db: Session = Depends(get_d
 
 
 @router.post("/otp/verify")
-def verify_code(body: OtpVerify, response: Response, db: Session = Depends(get_db)):
+def verify_code(body: OtpVerify, request: Request, response: Response, db: Session = Depends(get_db)):
     try:
         token = auth.verify_otp(db, str(body.email), body.code)
     except auth.OtpError as exc:
         _fail(exc)
+    request.state.ao_email = str(body.email).lower()  # shown in the request log
     s = get_settings()
     response.set_cookie(auth.SESSION_COOKIE, token, max_age=s.session_ttl_hours * 3600,
                         httponly=True, secure=s.cookie_secure, samesite="strict", path="/")

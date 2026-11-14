@@ -1,7 +1,7 @@
 """Back-office API: inventory, blacklist, merchants, provisioning retries. Requires X-Admin-Token."""
 import secrets
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,9 +19,10 @@ from app.services import inventory, orders
 from app.validators import ValidationError, validate_category
 
 
-def require_admin(x_admin_token: str = Header(default="")):
+def require_admin(request: Request, x_admin_token: str = Header(default="")):
     if not secrets.compare_digest(x_admin_token, get_settings().admin_token):
         raise HTTPException(status_code=401, detail="Invalid admin token")
+    request.state.admin = True  # shown in the request log
 
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin)])

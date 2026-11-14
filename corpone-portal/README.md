@@ -157,6 +157,36 @@ Entries hold a subject (`COMPANY` with a UEN, or `ACCOUNT_OFFICER` with NRIC/FIN
 reason, a `start_date`, and an optional `end_date` (blank means indefinite). An entry blocks
 sign-up only while it is in force (`start_date ≤ today ≤ end_date`).
 
+## Watching logs and API calls while testing
+
+Start the server in its own terminal and keep a copy of the log:
+
+```bash
+.venv/bin/uvicorn app.main:app --reload --no-access-log 2>&1 | tee data/server.log
+```
+
+Each API call prints one line (page files under `/static` and `/healthz` are skipped):
+
+```
+INFO corpone.api: GET /api/signups -> 200 3ms by=admin@corp1.com.sg id=9e8a8a42
+WARNING corpone.api: GET /api/admin/inventory/pairings?category=ACME-CORP -> 401 1ms by=- id=87d9954b
+```
+
+- `by` is the signed-in AO's email, `admin` for the back office, `api-client:<id>` for a gateway
+  key, or `-` when the caller isn't signed in.
+- 4xx lines are logged as WARNING and 5xx as ERROR, with the traceback.
+- `id` is also returned in the `X-Request-ID` response header. Find a call in the browser's
+  DevTools → Network tab, copy that header, and run `grep <id> data/server.log` to find it.
+  A client can send its own `X-Request-ID` to set the ID.
+- Request and response bodies are never logged, because they hold OTP codes, NRIC numbers and
+  contracts. Use DevTools → Network → Payload / Response to see them.
+- Useful filters: `tail -f data/server.log | grep corpone.api`, and
+  `grep -E "WARNING|ERROR" data/server.log` for failed calls only.
+- `--no-access-log` turns off uvicorn's own per-request line, which would duplicate this one.
+  Set `CORPONE_REQUEST_LOG=false` to turn this log off.
+- Sign-in codes sent with the `console` email backend are in `data/outbox/*.eml`. Gateway and
+  upstream calls are also listed under back office → Gateway monitoring.
+
 ## Configuration (`.env`, prefix `CORPONE_`)
 
 | Setting | Options |
