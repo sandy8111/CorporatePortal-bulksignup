@@ -219,7 +219,7 @@ def auto_pair(db: Session, category: str) -> list[dict]:
 
 # Filters for the inventory/pairing lists. NUMBERS_WAITING lists numbers that have no SIM yet.
 SIM_FILTERS = {"AVAILABLE", "PAIRED", "RESERVED", "ASSIGNED", "NUMBERS_WAITING"}
-AO_FILTERS = {"AVAILABLE", "PAIRED", "MINE"}  # an AO never sees other carts' or live lines
+AO_FILTERS = {"AVAILABLE", "PAIRED", "MINE", "NUMBERS_WAITING"}  # an AO never sees other carts' or live lines
 
 
 def _like(q: str) -> str:
@@ -284,14 +284,19 @@ def list_pairings(db: Session, category: str, status: str | None = None, q: str 
 
     sim_counts = dict(db.execute(select(Sim.status, func.count()).where(Sim.category == category)
                                  .group_by(Sim.status)).all())
+    waiting = free_number_count(db, category)
     if ao_view:
-        counts = {st.value: sim_counts.get(st, 0) for st in free} | {"MINE": len(in_cart)}
+        counts = {st.value: sim_counts.get(st, 0) for st in free} | {"MINE": len(in_cart), "NUMBERS_WAITING": waiting}
     else:
-        waiting = db.scalar(select(func.count()).select_from(MobileNumber).where(
-            MobileNumber.category == category, ~MobileNumber.sim.has()))
         counts = {st.value: sim_counts.get(st, 0) for st in InventoryStatus} | {"NUMBERS_WAITING": waiting}
     return {"category": category, "total": total, "limit": limit, "offset": offset,
             "counts": counts, "pairs": pairs}
+
+
+def free_number_count(db: Session, category: str) -> int:
+    """Numbers in the category with no SIM yet, i.e. available to pair with newly uploaded SIMs."""
+    return db.scalar(select(func.count()).select_from(MobileNumber).where(
+        MobileNumber.category == category, ~MobileNumber.sim.has()))
 
 
 def summary(db: Session) -> list[dict]:

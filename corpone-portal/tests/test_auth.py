@@ -8,7 +8,7 @@ UEN = "197401143C"
 
 
 def test_wizard_requires_login(anon):
-    assert anon.post("/api/signups", json={"uen": UEN, "company_name": "A", "category": "ACME"}).status_code == 401
+    assert anon.post("/api/signups", json={"uen": UEN, "company_name": "A"}).status_code == 401
     assert anon.get("/api/plans").status_code == 200  # plans are public
 
 
@@ -62,7 +62,7 @@ def test_resend_cooldown(anon):
 
 
 def test_signups_are_private_to_their_owner(client, anon):
-    sid = client.post("/api/signups", json={"uen": UEN, "company_name": "A", "category": "ACME"}).json()["id"]
+    sid = client.post("/api/signups", json={"uen": UEN, "company_name": "A"}).json()["id"]
     login(anon, "intruder@evil.sg")
     assert anon.get(f"/api/signups/{sid}").status_code == 404
     assert anon.post(f"/api/signups/{sid}/submit").status_code == 404
@@ -70,7 +70,7 @@ def test_signups_are_private_to_their_owner(client, anon):
 
 
 def test_ao_email_must_match_login(client):
-    sid = client.post("/api/signups", json={"uen": UEN, "company_name": "A", "category": "ACME"}).json()["id"]
+    sid = client.post("/api/signups", json={"uen": UEN, "company_name": "A"}).json()["id"]
     ao = {"full_name": "Tan", "id_type": "NRIC", "id_number": "S1234567D", "mobile": "91234567",
           "merchant_code": "CORP-DIRECT-01"}
     assert client.put(f"/api/signups/{sid}/account-officer", json={**ao, "email": "other@x.sg"}).status_code == 400

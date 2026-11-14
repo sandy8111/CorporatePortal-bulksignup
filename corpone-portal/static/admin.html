@@ -22,6 +22,19 @@
   </section>
 
   <section class="card">
+    <h2>SIM categories allocated to companies</h2>
+    <form id="catForm" class="row">
+      <div><label>SIM category</label><input name="category" required maxlength="40" placeholder="e.g. ACME-SIM-001"></div>
+      <div><label>Company UEN</label><input name="uen" required maxlength="12" placeholder="e.g. 197401143C"></div>
+      <div><label>Description (optional)</label><input name="description" maxlength="200" placeholder="e.g. Acme HQ staff lines"></div>
+      <div style="flex:0"><button>Allocate</button></div>
+    </form>
+    <div class="hint">Account officers can only pick, upload SIMs into, and take lines from categories allocated to their company's UEN. A category belongs to one company; allocating it again moves it.</div>
+    <div class="msg hidden" id="msgCat"></div>
+    <table id="catTable" style="margin-top:14px"><thead><tr><th>SIM category</th><th>UEN</th><th>Description</th><th>eSIM ready</th><th>Physical ready</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section class="card">
     <h2>Upload SIM inventory</h2>
     <form id="simForm" class="row">
       <div><label>CSV: iccid,sim_type,category[,smdp_address,matching_id]</label><input type="file" name="file" accept=".csv,.txt" required></div>
@@ -53,7 +66,7 @@
   <section class="card">
     <h2>SIM ↔ number pairing</h2>
     <form id="pairForm" class="row">
-      <div><label>Category</label><input name="category" required placeholder="e.g. ACME-CORP"></div>
+      <div><label>Category</label><input name="category" required placeholder="e.g. ACME-SIM-001"></div>
       <div><label>Search</label><input name="q" type="search" placeholder="ICCID or number"></div>
       <div style="flex:0"><button>Show</button></div>
     </form>
@@ -68,6 +81,18 @@
     <div class="msg hidden" id="msgPair"></div>
     <div class="scroll"><table id="pairTable"><thead><tr><th>SIM ICCID</th><th>Type</th><th>SIM status</th><th>MSISDN</th><th>Number status</th><th>Paired at</th></tr></thead><tbody></tbody></table></div>
     <div class="actions"><button type="button" class="secondary hidden" id="pairPrev">← Previous</button><span class="hint" id="pairShowing" style="margin:0"></span><button type="button" class="secondary hidden" id="pairNext">Next →</button></div>
+  </section>
+
+  <section class="card">
+    <h2>Delegated merchant codes</h2>
+    <form id="merForm" class="row">
+      <div><label>Merchant code</label><input name="code" required maxlength="40" placeholder="e.g. CORP-DEALER-02"></div>
+      <div><label>Name</label><input name="name" required maxlength="120" placeholder="e.g. Acme Dealer Network"></div>
+      <div style="flex:0"><button>Save</button></div>
+    </form>
+    <div class="hint">Active codes appear in the account officer step's drop-down. Saving an existing code updates its name.</div>
+    <div class="msg hidden" id="msgMer"></div>
+    <table id="merTable" style="margin-top:14px"><thead><tr><th>Code</th><th>Name</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
   </section>
 
   <section class="card">

@@ -67,8 +67,6 @@
             <div class="grid">
               <div><label>UEN (Singapore BRN)</label><input name="uen" required placeholder="e.g. 197401143C" maxlength="12"></div>
               <div><label>Registered company name</label><input name="company_name" required maxlength="200"></div>
-              <div><label>Inventory category</label><input name="category" required placeholder="e.g. ACME-CORP" maxlength="40">
-                <div class="hint">SIMs and numbers are paired and allocated from this category.</div></div>
               <div class="full"><label>Registered address</label><textarea name="company_address" rows="2" maxlength="500"></textarea></div>
             </div>
             <div class="actions"><button type="submit">Validate UEN</button></div>
@@ -99,7 +97,7 @@
           <div><label>ID number</label><input name="id_number" required maxlength="20"></div>
           <div><label>Email</label><input name="email" type="email" readonly><div class="hint">Verified at sign-in. eSIM QR codes go here.</div></div>
           <div><label>Mobile</label><input name="mobile" required placeholder="9xxxxxxx"></div>
-          <div><label>Delegated merchant code</label><input name="merchant_code" required placeholder="e.g. CORP-DIRECT-01"></div>
+          <div class="full"><label>Delegated merchant code</label><select name="merchant_code" id="merchantSelect" required><option value="">Loading…</option></select></div>
         </div>
         <div class="actions"><button type="button" class="secondary" data-back="2">← Back</button><span class="spacer"></span><button type="submit">Verify &amp; continue →</button></div>
       </form>
@@ -110,40 +108,58 @@
     <section class="card step hidden" data-step="4">
       <div class="eyebrow">Step 4 of 6</div>
       <h2>Plan &amp; lines</h2>
-      <p class="lead">Pick a plan, optionally upload your SIM cards, then add paired SIM + number lines to your cart. You can repeat this to mix plans.</p>
+      <p class="lead">Select your SIM category, upload your SIM cards, check the numbers available, then pair SIMs with numbers and add them to your cart on a plan. You can repeat the last step to mix plans.</p>
       <div class="substeps">
-        <div class="sub" id="subPlan">
-          <h4>Choose a plan</h4>
-          <div class="plans" id="plans"></div>
+        <div class="sub" id="subCategory">
+          <h4>Select SIM category</h4>
+          <form id="categoryForm" class="row">
+            <div><label>Categories allocated to UEN <span id="catUen"></span></label><select name="category" id="categorySelect" required></select></div>
+            <div style="flex:0"><button type="submit">Use this category</button></div>
+          </form>
+          <div class="hint">SIMs you upload, and the lines you add to the cart, come from this category. To change it later, empty your cart first.</div>
+          <div class="msg hidden" id="msgCat"></div>
         </div>
         <div class="sub" id="subSim">
-          <h4>Upload SIM cards <small>(optional)</small></h4>
+          <h4>Upload SIM cards <small>(optional if SIMs are already loaded)</small></h4>
           <form id="simForm" class="row">
             <div><label>SIM file (CSV: iccid[,sim_type])</label><input type="file" name="file" accept=".csv,.txt,text/csv" required></div>
             <div style="flex:0;min-width:auto"><label>Type for rows without one</label>
               <div class="seg"><label><input type="radio" name="sim_type" value="ESIM" checked>eSIM</label><label><input type="radio" name="sim_type" value="PHYSICAL">Physical</label></div></div>
-            <div style="flex:0"><button type="submit" class="secondary">Upload &amp; auto-pair</button></div>
+            <div style="flex:0"><button type="submit" class="secondary">Upload SIMs</button></div>
           </form>
-          <div class="hint">ICCIDs must be numeric, 18–20 digits. New SIMs are paired automatically with numbers in your category.</div>
+          <div class="hint">ICCIDs must be numeric, 18–20 digits. New SIMs go into the selected category and are paired automatically with its available numbers, oldest first.</div>
           <div class="msg hidden" id="msgSim"></div>
           <div id="simResult" class="hidden">
             <div class="chips" id="simResultChips"></div>
             <div class="scroll"><table id="simResultTable"><thead><tr><th>Row</th><th>ICCID</th><th>Type</th><th>Result</th><th>Paired number</th></tr></thead><tbody></tbody></table></div>
           </div>
         </div>
-        <div class="sub" id="subCart">
-          <h4>Pair &amp; add lines</h4>
+        <div class="sub" id="subNumbers">
+          <h4>Numbers available · <span id="availCat">–</span></h4>
           <div class="avail">
-            <div class="stat"><div class="v" id="availEsim">–</div><div class="k">eSIM lines ready</div></div>
-            <div class="stat"><div class="v" id="availPhys">–</div><div class="k">Physical SIM lines ready</div></div>
-            <div class="stat"><div class="v" id="availCat">–</div><div class="k">Category</div></div>
+            <div class="stat"><div class="v" id="availNumbers">–</div><div class="k">Numbers available to pair</div></div>
+            <div class="stat"><div class="v" id="availSimsWaiting">–</div><div class="k">SIMs waiting for a number</div></div>
+            <div class="stat"><div class="v" id="availEsim">–</div><div class="k">eSIM lines paired &amp; ready</div></div>
+            <div class="stat"><div class="v" id="availPhys">–</div><div class="k">Physical lines paired &amp; ready</div></div>
           </div>
-          <form id="cartForm" class="row">
+          <div class="msg hidden" id="msgNumbers"></div>
+          <details id="freeNumbers" class="hidden" style="margin-top:10px">
+            <summary>Show available numbers</summary>
+            <div class="scroll" style="margin-top:8px"><table id="freeNumTable"><thead><tr><th>Mobile number</th><th>Status</th><th>Added</th></tr></thead><tbody></tbody></table></div>
+            <div class="hint" id="freeNumShowing"></div>
+          </details>
+        </div>
+        <div class="sub" id="subCart">
+          <h4>Pair SIMs &amp; add lines</h4>
+          <label>Plan</label>
+          <div class="plans" id="plans"></div>
+          <form id="cartForm" class="row" style="margin-top:14px">
             <div style="flex:0;min-width:auto"><label>SIM type</label>
               <div class="seg"><label><input type="radio" name="sim_type" value="ESIM" checked>eSIM</label><label><input type="radio" name="sim_type" value="PHYSICAL">Physical</label></div></div>
             <div style="max-width:180px"><label>Number of lines</label><input name="quantity" type="number" min="1" max="5000" value="1" required></div>
-            <div style="flex:0"><button type="submit">Add to cart</button></div>
+            <div style="flex:0"><button type="submit">Add paired lines to cart</button></div>
           </form>
+          <div class="hint">Each line is a SIM already paired with a number from the selected category.</div>
           <div class="msg hidden" id="msg4"></div>
           <div id="cartBox" class="hidden" style="margin-top:14px">
             <h4 style="margin:0 0 8px">Lines in your cart</h4>
@@ -151,7 +167,7 @@
           </div>
         </div>
       </div>
-      <div class="inv">
+      <div class="inv" id="invBox">
         <div class="inv-head">
           <h3 style="margin:0">SIM inventory · <span id="invCat"></span></h3>
           <span class="hint" id="invShowing" style="margin:0"></span>

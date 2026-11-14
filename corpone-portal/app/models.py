@@ -125,6 +125,18 @@ class MobileNumber(Base):
     sim: Mapped["Sim | None"] = relationship(back_populates="number")
 
 
+class CategoryAllocation(Base):
+    """A SIM inventory category pre-allocated by the back office to one company (UEN), e.g. ACME-SIM-001.
+    A company can have several categories; a category belongs to exactly one company."""
+    __tablename__ = "category_allocations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    category: Mapped[str] = mapped_column(String(40), unique=True)
+    uen: Mapped[str] = mapped_column(String(10), index=True)
+    description: Mapped[str] = mapped_column(String(200), default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 # --------------------------------------------------------------------------- sign-up (draft order)
 
 class Signup(Base):
@@ -136,7 +148,8 @@ class Signup(Base):
     uen: Mapped[str] = mapped_column(String(10))
     company_name: Mapped[str] = mapped_column(String(200))
     company_address: Mapped[str] = mapped_column(Text, default="")
-    category: Mapped[str] = mapped_column(String(40))
+    # SIM category picked in the plan & lines step, from the categories allocated to this UEN
+    category: Mapped[str | None] = mapped_column(String(40), nullable=True)
     contract_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     contract_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
 

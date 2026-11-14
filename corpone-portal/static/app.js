@@ -53,6 +53,7 @@ function go(step) {
   const pct = state.submitted ? 100 : ((step - 1) / (TOTAL_STEPS - 1)) * 100;
   $("#progressBar").style.width = `${pct}%`;
   $("#progressLabel").textContent = state.submitted ? "Order submitted" : `Step ${step} of ${TOTAL_STEPS}`;
+  if (step === 3) loadMerchants();
   if (step === 4) loadStep4();
   if (step === 5) renderReview();
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -114,21 +115,37 @@ async function signedIn() {
 }
 
 // ---------------------------------------------------------------- step 2: company + contract
-function lockCompanyForm(s) {
+// After the UEN is validated the details stay editable; saving re-validates them.
+function showCompany(s) {
   const f = $("#companyForm");
-  for (const k of ["uen", "company_name", "category", "company_address"]) f.elements[k].value = s[k] || "";
-  f.querySelectorAll("input,textarea,button").forEach(i => i.disabled = true);
+  for (const k of ["uen", "company_name", "company_address"]) f.elements[k].value = s[k] || "";
+  $("button[type=submit]", f).textContent = "Save changes";
   $("#subCompany").classList.add("complete");
   $("#contractForm").querySelectorAll("input,button").forEach(i => i.disabled = false);
+  $("#subContract").classList.toggle("complete", !!s.contract_uploaded);
+  $("#toStep3").disabled = !s.contract_uploaded;
 }
 
 $("#companyForm").onsubmit = async e => {
   e.preventDefault();
+  const body = Object.fromEntries(new FormData(e.target));
   try {
-    state.signup = await api("POST", "api/signups", Object.fromEntries(new FormData(e.target)));
-    sessionStorage.setItem("signupId", state.signup.id);
-    lockCompanyForm(state.signup);
-    msg("msg2", `UEN ${state.signup.uen} is valid and not blacklisted. Now upload the signed contract.`, "ok");
+    if (!state.signup) {
+      state.signup = await api("POST", "api/signups", body);
+      sessionStorage.setItem("signupId", state.signup.id);
+      showCompany(state.signup);
+      return msg("msg2", `UEN ${state.signup.uen} is valid and not blacklisted. Now upload the signed contract.`, "ok");
+    }
+    const r = await api("PUT", `api/signups/${state.signup.id}/company`, body);
+    state.signup = r;
+    showCompany(r);
+    if (r.uen_changed) {
+      state.maxStep = 2; go(2);
+      msg("msg2", `UEN ${r.uen} is valid and not blacklisted. Because the UEN changed, upload the signed contract for this company again` +
+        (r.category ? "." : ", and choose a SIM category allocated to it in the plan & lines step."), "info");
+    } else {
+      msg("msg2", "Company details saved.", "ok");
+    }
   } catch (err) { msg("msg2", err.message); }
 };
 
@@ -146,6 +163,18 @@ $("#contractForm").onsubmit = async e => {
 $("#toStep3").onclick = () => go(3);
 
 // ---------------------------------------------------------------- step 3: account officer
+async function loadMerchants() {
+  const sel = $("#merchantSelect");
+  try {
+    const list = await api("GET", "api/merchants");
+    const placeholder = Object.assign(document.createElement("option"),
+      { value: "", textContent: list.length ? "Select a merchant code" : "No active merchant codes – contact CorpOne" });
+    sel.replaceChildren(placeholder, ...list.map(m => Object.assign(document.createElement("option"),
+      { value: m.code, textContent: `${m.code} – ${m.name}` })));
+    const current = state.signup && state.signup.merchant_code;
+    if (current && list.some(m => m.code === current)) sel.value = current;
+  } catch (err) { msg("msg3", `Could not load merchant codes: ${err.message}`); }
+}
 $("#aoForm").onsubmit = async e => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
@@ -157,7 +186,7 @@ $("#aoForm").onsubmit = async e => {
   } catch (err) { msg("msg3", err.message); }
 };
 
-// ---------------------------------------------------------------- step 4: plan, SIM upload, cart
+// ---------------------------------------------------------------- step 4: SIM category, SIM upload, numbers, pair & add lines
 async function loadStep4() {
   if (!$("#plans").children.length) {
     const plans = await api("GET", "api/plans");
@@ -172,20 +201,88 @@ async function loadStep4() {
       card.onclick = () => {
         state.plan = p.code;
         document.querySelectorAll(".plan").forEach(c => c.classList.toggle("selected", c === card));
-        $("#subPlan").classList.add("complete");
         msg("msg4", "");
       };
       $("#plans").append(card);
     }
   }
-  refreshAvailability();
   renderCartBar();
-  loadInventory();
+  await loadCategories();
 }
 
+// ---- SIM category: chosen from the categories the back office allocated to this company (UEN)
+function setCategoryReady(ready) {
+  for (const id of ["#subSim", "#subNumbers", "#subCart", "#invBox"]) $(id).classList.toggle("locked", !ready);
+  $("#subCategory").classList.toggle("complete", ready);
+}
+async function loadCategories() {
+  let d;
+  try { d = await api("GET", `api/signups/${state.signup.id}/categories`); }
+  catch (err) { setCategoryReady(false); return msg("msgCat", err.message); }
+  $("#catUen").textContent = d.uen;
+  const sel = $("#categorySelect");
+  sel.replaceChildren(...d.categories.map(c => {
+    const o = document.createElement("option");
+    o.value = c.category;
+    o.textContent = `${c.category}${c.description ? " – " + c.description : ""} (${c.ESIM} eSIM, ${c.PHYSICAL} physical ready)`;
+    return o;
+  }));
+  const allocated = d.categories.some(c => c.category === d.selected);
+  if (allocated) sel.value = d.selected;
+  $("#categoryForm button").disabled = !d.categories.length;
+  if (!d.categories.length) {
+    setCategoryReady(false);
+    return msg("msgCat", `No SIM category is allocated to UEN ${d.uen} yet. Ask CorpOne to allocate one, then reload this page.`);
+  }
+  if (d.selected && !allocated) {
+    setCategoryReady(false);
+    return msg("msgCat", `SIM category ${d.selected} is no longer allocated to your company. Choose another one.`);
+  }
+  if (!d.selected) { setCategoryReady(false); return msg("msgCat", "Choose a SIM category to continue.", "info"); }
+  msg("msgCat", "");
+  setCategoryReady(true);
+  refreshAvailability();
+  loadInventory();
+}
+$("#categoryForm").onsubmit = async e => {
+  e.preventDefault();
+  try {
+    state.signup = await api("PUT", `api/signups/${state.signup.id}/category`, { category: $("#categorySelect").value });
+    $("#simResult").classList.add("hidden");
+    await loadCategories();
+    msg("msgCat", `Using SIM category ${state.signup.category}.`, "ok");
+  } catch (err) { msg("msgCat", err.message); }
+};
+
+// ---- Numbers available in the category, and lines already paired
 async function refreshAvailability() {
-  const a = await api("GET", `api/signups/${state.signup.id}/availability`);
-  $("#availEsim").textContent = a.ESIM; $("#availPhys").textContent = a.PHYSICAL; $("#availCat").textContent = a.category;
+  let a;
+  try { a = await api("GET", `api/signups/${state.signup.id}/availability`); }
+  catch (err) { return msg("msgNumbers", err.message); }
+  $("#availCat").textContent = a.category;
+  $("#availNumbers").textContent = a.numbers_available;
+  $("#availSimsWaiting").textContent = a.sims_waiting;
+  $("#availEsim").textContent = a.ESIM; $("#availPhys").textContent = a.PHYSICAL;
+  const ready = a.ESIM + a.PHYSICAL;
+  $("#subNumbers").classList.toggle("complete", ready > 0);
+  if (a.sims_waiting && !a.numbers_available)
+    msg("msgNumbers", `${a.sims_waiting} SIM(s) are waiting because no numbers are available in ${a.category}. Ask CorpOne to add numbers; they pair automatically.`, "err");
+  else if (!ready && !a.numbers_available)
+    msg("msgNumbers", `No numbers are available in ${a.category} yet. Ask CorpOne to add numbers to this category.`, "err");
+  else if (!ready)
+    msg("msgNumbers", `${a.numbers_available} number(s) are available. Upload SIM cards above to pair them.`, "info");
+  else msg("msgNumbers", "");
+  $("#freeNumbers").classList.toggle("hidden", !a.numbers_available);
+  if (a.numbers_available) loadFreeNumbers();
+}
+
+async function loadFreeNumbers() {
+  try {
+    const d = await api("GET", `api/signups/${state.signup.id}/sims?status=NUMBERS_WAITING&limit=200`);
+    $("#freeNumTable tbody").replaceChildren(...d.pairs.map(x =>
+      row([mono(x.msisdn), pill("Available · waiting for a SIM", "wait"), when(x.uploaded_at)])));
+    $("#freeNumShowing").textContent = d.total > d.pairs.length ? `Showing ${d.pairs.length} of ${d.total}` : "";
+  } catch (err) { $("#freeNumShowing").textContent = `Could not load numbers: ${err.message}`; }
 }
 
 const simType = t => (t === "ESIM" ? "eSIM" : "Physical");
@@ -235,7 +332,7 @@ $("#simForm").onsubmit = async e => {
 // ---- Add to cart: show exactly which SIM <-> number lines were added
 $("#cartForm").onsubmit = async e => {
   e.preventDefault();
-  if (!state.plan) return msg("msg4", "Select a plan above first.");
+  if (!state.plan) return msg("msg4", "Select a plan first.");
   const f = Object.fromEntries(new FormData(e.target));
   try {
     const cart = await api("POST", `api/signups/${state.signup.id}/cart`,
@@ -303,7 +400,7 @@ $("#toStep5").onclick = () => go(5);
 function renderReview() {
   const s = state.signup, c = s.cart, ao = s.account_officer;
   dl($("#reviewCompany"), [["Name", s.company_name], ["UEN", s.uen], ["Address", s.company_address || "–"],
-    ["Category", s.category], ["Contract", s.contract_filename]]);
+    ["SIM category", s.category], ["Contract", s.contract_filename]]);
   dl($("#reviewAo"), [["Name", ao.full_name], ["ID", `${ao.id_type} ${ao.id_number_masked}`], ["Email", ao.email],
     ["Mobile", ao.mobile], ["Merchant code", s.merchant_code]]);
   renderAiReview(s.contract_ai_review);
@@ -414,9 +511,8 @@ async function resume() {
   try {
     state.signup = await api("GET", `api/signups/${id}`);
     if (state.signup.status !== "DRAFT") throw new Error();
-    lockCompanyForm(state.signup);
+    showCompany(state.signup);
     if (!state.signup.contract_uploaded) return go(2);
-    $("#subContract").classList.add("complete"); $("#toStep3").disabled = false;
     state.maxStep = 3;
     if (!state.signup.account_officer) return go(3);
     go(4);

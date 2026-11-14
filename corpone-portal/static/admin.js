@@ -46,7 +46,7 @@ for (const [form, path, out] of [["#simForm", "sims", "msgSim"], ["#numForm", "n
     try {
       const r = await api("POST", `api/admin/inventory/${path}`, fd);
       msg(out, reportText(r), r.rejected_count ? "err" : "ok");
-      e.target.reset(); loadInventory();
+      e.target.reset(); loadInventory(); loadCategories();
       if (pair.category) loadPairings();
     } catch (err) { msg(out, err.message); }
   };
@@ -107,6 +107,55 @@ $("#pairForm").onsubmit = e => {
 document.querySelectorAll("#pairTabs button").forEach(b => b.onclick = () => { pair.filter = b.dataset.f; pair.offset = 0; loadPairings(); });
 $("#pairPrev").onclick = () => { pair.offset = Math.max(0, pair.offset - PAGE); loadPairings(); };
 $("#pairNext").onclick = () => { pair.offset += PAGE; loadPairings(); };
+
+// ---- SIM category allocation (category -> company UEN)
+$("#catForm").onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  try {
+    const a = await api("PUT", "api/admin/categories", { ...f, active: true });
+    msg("msgCat", `${a.category} is allocated to UEN ${a.uen}.`, "ok");
+    e.target.reset(); loadCategories();
+  } catch (err) { msg("msgCat", err.message); }
+};
+
+async function loadCategories() {
+  const rows = await api("GET", "api/admin/categories");
+  $("#catTable tbody").replaceChildren(...(rows.length ? rows.map(a => {
+    const b = document.createElement("button");
+    b.className = "link"; b.textContent = a.active ? "Deactivate" : "Reactivate";
+    b.onclick = async () => {
+      if (a.active && !confirm(`Stop ${a.uen} from using ${a.category}? Draft sign-ups using it must choose another category.`)) return;
+      try { await api("PUT", "api/admin/categories", { category: a.category, uen: a.uen, description: a.description, active: !a.active }); loadCategories(); }
+      catch (err) { msg("msgCat", err.message); }
+    };
+    const cell = document.createElement("td"); cell.append(b);
+    return row([a.category, a.uen, a.description || "–", a.ESIM, a.PHYSICAL, a.active ? "active" : "inactive", cell]);
+  }) : [row([Object.assign(td("No categories allocated yet."), { colSpan: 7 })])]));
+}
+
+// ---- Delegated merchant codes (shown in the AO step's drop-down when active)
+$("#merForm").onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  try {
+    const m = await api("PUT", "api/admin/merchants", { ...f, active: true });
+    msg("msgMer", `${m.code} saved and active.`, "ok"); e.target.reset(); loadMerchants();
+  } catch (err) { msg("msgMer", err.message); }
+};
+async function loadMerchants() {
+  const rows = await api("GET", "api/admin/merchants");
+  $("#merTable tbody").replaceChildren(...rows.map(m => {
+    const b = document.createElement("button");
+    b.className = "link"; b.textContent = m.active ? "Deactivate" : "Reactivate";
+    b.onclick = async () => {
+      try { await api("PUT", "api/admin/merchants", { ...m, active: !m.active }); loadMerchants(); }
+      catch (err) { msg("msgMer", err.message); }
+    };
+    const cell = document.createElement("td"); cell.append(b);
+    return row([m.code, m.name, m.active ? "active" : "inactive", cell]);
+  }));
+}
 
 $("#blSubject").onchange = e => {
   $("#blIdType").innerHTML = e.target.value === "COMPANY" ? "<option>UEN</option>" : "<option>NRIC</option><option>FIN</option><option>PASSPORT</option>";
@@ -184,5 +233,5 @@ async function loadLogs() {
 $("#refreshLogs").onclick = loadLogs;
 $("#resetBreakers").onclick = async () => { await api("POST", "api/admin/gateway/outbound/reset"); loadLogs(); };
 
-async function loadAll() { await Promise.all([loadInventory(), loadBlacklist(), loadScopes(), loadKeys(), loadLogs()]); }
+async function loadAll() { await Promise.all([loadInventory(), loadCategories(), loadMerchants(), loadBlacklist(), loadScopes(), loadKeys(), loadLogs()]); }
 if (token) loadAll().catch(e => msg("msgToken", e.message));

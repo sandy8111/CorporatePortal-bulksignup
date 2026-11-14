@@ -10,15 +10,33 @@ class SignupCreate(BaseModel):
     uen: str
     company_name: str = Field(min_length=1, max_length=200)
     company_address: str = Field(default="", max_length=500)
-    category: str
 
     @field_validator("uen")
     @classmethod
     def _uen(cls, x): return v.validate_uen(x)
 
+
+class CategoryChoice(BaseModel):
+    category: str
+
     @field_validator("category")
     @classmethod
     def _cat(cls, x): return v.validate_category(x)
+
+
+class CategoryAllocationIn(BaseModel):
+    category: str
+    uen: str
+    description: str = Field(default="", max_length=200)
+    active: bool = True
+
+    @field_validator("category")
+    @classmethod
+    def _cat(cls, x): return v.validate_category(x)
+
+    @field_validator("uen")
+    @classmethod
+    def _uen(cls, x): return v.validate_uen(x)
 
 
 class AccountOfficerIn(BaseModel):

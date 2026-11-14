@@ -23,14 +23,24 @@ def load_inventory(client, category="ACME", esim=3, physical=2, numbers=5):
     return r.json()
 
 
+def allocate(client, category="ACME", uen=UEN, active=True):
+    r = client.put("/api/admin/categories", headers=ADMIN, json={"category": category, "uen": uen, "active": active})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
 def start(client, category="ACME"):
+    """Company, contract and AO steps, then pick the SIM category (allocated to the company first)."""
+    allocate(client, category)
     r = client.post("/api/signups", json={"uen": UEN, "company_name": "Acme Pte Ltd",
-                                          "company_address": "1 Raffles Place", "category": category})
+                                          "company_address": "1 Raffles Place"})
     assert r.status_code == 201, r.text
     sid = r.json()["id"]
     r = client.post(f"/api/signups/{sid}/contract", files={"file": ("contract.pdf", PDF, "application/pdf")})
     assert r.status_code == 200, r.text
     r = client.put(f"/api/signups/{sid}/account-officer", json=AO)
+    assert r.status_code == 200, r.text
+    r = client.put(f"/api/signups/{sid}/category", json={"category": category})
     assert r.status_code == 200, r.text
     return sid
 
@@ -44,7 +54,8 @@ def test_full_signup_flow(client, s3):
     keys = [o["Key"] for o in s3.list_objects_v2(Bucket="corpone-test-contracts")["Contents"]]
     assert len(keys) == 1 and keys[0].startswith(f"contracts/{UEN}/{sid}/")
 
-    assert client.get(f"/api/signups/{sid}/availability").json() == {"category": "ACME", "ESIM": 3, "PHYSICAL": 2}
+    assert client.get(f"/api/signups/{sid}/availability").json() == {"category": "ACME", "ESIM": 3, "PHYSICAL": 2,
+                                                                      "numbers_available": 0, "sims_waiting": 0}
     r = client.post(f"/api/signups/{sid}/cart", json={"plan_code": "FLASH-20", "sim_type": "ESIM", "quantity": 2})
     assert r.status_code == 200, r.text
     r = client.post(f"/api/signups/{sid}/cart", json={"plan_code": "GLARE-40", "sim_type": "PHYSICAL", "quantity": 1})
@@ -110,7 +121,7 @@ def test_blacklisted_account_officer_rejected(client):
         "subject_type": "ACCOUNT_OFFICER", "id_type": "NRIC", "id_value": "s1234567d",
         "reason": "fraud", "start_date": str(today - timedelta(days=1)), "end_date": str(today + timedelta(days=30))})
     assert r.status_code == 201, r.text
-    r = client.post("/api/signups", json={"uen": UEN, "company_name": "Acme", "category": "ACME"})
+    r = client.post("/api/signups", json={"uen": UEN, "company_name": "Acme"})
     sid = r.json()["id"]
     r = client.put(f"/api/signups/{sid}/account-officer", json=AO)
     assert r.status_code == 403
@@ -130,7 +141,7 @@ def test_expired_blacklist_entry_is_ignored(client):
 def test_blacklisted_company_rejected(client):
     client.post("/api/admin/blacklist", headers=ADMIN, json={
         "subject_type": "COMPANY", "id_type": "UEN", "id_value": UEN, "start_date": str(date.today())})
-    r = client.post("/api/signups", json={"uen": UEN, "company_name": "Acme", "category": "ACME"})
+    r = client.post("/api/signups", json={"uen": UEN, "company_name": "Acme"})
     assert r.status_code == 403
 
 
@@ -144,9 +155,9 @@ def test_blacklist_added_after_draft_blocks_submit(client):
 
 
 def test_invalid_uen_and_merchant_and_contract(client):
-    r = client.post("/api/signups", json={"uen": "201912345A", "company_name": "X", "category": "ACME"})
+    r = client.post("/api/signups", json={"uen": "201912345A", "company_name": "X"})
     assert r.status_code == 422
-    sid = client.post("/api/signups", json={"uen": UEN, "company_name": "X", "category": "ACME"}).json()["id"]
+    sid = client.post("/api/signups", json={"uen": UEN, "company_name": "X"}).json()["id"]
     r = client.post(f"/api/signups/{sid}/contract", files={"file": ("c.pdf", b"not a pdf", "application/pdf")})
     assert r.status_code == 400
     r = client.put(f"/api/signups/{sid}/account-officer", json={**AO, "merchant_code": "NOPE"})
@@ -210,7 +221,7 @@ def test_sim_list_pairing_and_cart_details(client):
     sid = start(client)
 
     lst = client.get(f"/api/signups/{sid}/sims").json()
-    assert lst["total"] == 4 and lst["counts"] == {"AVAILABLE": 1, "PAIRED": 3, "MINE": 0}
+    assert lst["total"] == 4 and lst["counts"] == {"AVAILABLE": 1, "PAIRED": 3, "MINE": 0, "NUMBERS_WAITING": 0}
     paired = [x for x in lst["pairs"] if x["sim_status"] == "PAIRED"]
     assert all(x["msisdn"] and x["number_status"] == "PAIRED" for x in paired)
     waiting = [x for x in lst["pairs"] if x["sim_status"] == "AVAILABLE"]
@@ -246,7 +257,7 @@ def test_ao_list_hides_other_carts_and_bad_params(client):
     other, mine = start(client), start(client)
     client.post(f"/api/signups/{other}/cart", json={"plan_code": "RAY-8", "sim_type": "ESIM", "quantity": 2})
     lst = client.get(f"/api/signups/{mine}/sims").json()
-    assert lst["total"] == 1 and set(lst["counts"]) == {"AVAILABLE", "PAIRED", "MINE"}
+    assert lst["total"] == 1 and set(lst["counts"]) == {"AVAILABLE", "PAIRED", "MINE", "NUMBERS_WAITING"}
     assert all(x["sim_status"] == "PAIRED" for x in lst["pairs"])
     for bad in ("status=RESERVED", "status=ASSIGNED", "limit=-1", "limit=0", "limit=501", "offset=-1"):
         assert client.get(f"/api/signups/{mine}/sims?{bad}").status_code in (400, 422), bad
@@ -299,3 +310,113 @@ def test_request_log_line_and_request_id(client, caplog):
     assert not any("/static/" in l or "/healthz" in l for l in lines)
     assert not any("123456" in l for l in lines)  # bodies are never logged
     assert "x-request-id" not in echoed.headers  # health checks are skipped entirely
+
+
+def test_category_is_chosen_from_company_allocations(client):
+    load_inventory(client, category="ACME-SIM-001", esim=2, physical=1, numbers=3)
+    allocate(client, "ACME-SIM-001")
+    allocate(client, "ACME-SIM-002")
+    allocate(client, "OTHERCO-SIM-001", uen="53312345C")  # another company's category
+    sid = client.post("/api/signups", json={"uen": UEN, "company_name": "Acme"}).json()["id"]
+    assert client.get(f"/api/signups/{sid}").json()["category"] is None
+
+    # nothing that touches inventory works until a category is chosen
+    assert client.get(f"/api/signups/{sid}/availability").status_code == 409
+    assert client.get(f"/api/signups/{sid}/sims").status_code == 409
+    assert client.post(f"/api/signups/{sid}/sims", files={"file": ("s.csv", f"{iccid(50)},ESIM\n")}).status_code == 409
+    assert client.post(f"/api/signups/{sid}/cart", json={"plan_code": "RAY-8", "sim_type": "ESIM", "quantity": 1}).status_code == 409
+
+    d = client.get(f"/api/signups/{sid}/categories").json()
+    assert [c["category"] for c in d["categories"]] == ["ACME-SIM-001", "ACME-SIM-002"]
+    assert d["categories"][0] == {"category": "ACME-SIM-001", "uen": UEN, "description": "", "active": True,
+                                       "ESIM": 2, "PHYSICAL": 1}
+    assert client.put(f"/api/signups/{sid}/category", json={"category": "OTHERCO-SIM-001"}).status_code == 403
+    assert client.put(f"/api/signups/{sid}/category", json={"category": "NOT-ALLOCATED"}).status_code == 403
+
+    assert client.put(f"/api/signups/{sid}/category", json={"category": "acme-sim-001"}).json()["category"] == "ACME-SIM-001"
+    assert client.get(f"/api/signups/{sid}/availability").json() == {"category": "ACME-SIM-001", "ESIM": 2, "PHYSICAL": 1,
+                                                                      "numbers_available": 0, "sims_waiting": 0}
+    r = client.post(f"/api/signups/{sid}/sims", data={"sim_type": "ESIM"}, files={"file": ("s.csv", f"{iccid(50)}\n")}).json()
+    assert r["items"][0]["category"] == "ACME-SIM-001"
+
+    # can't switch category while the cart has lines from the current one
+    client.post(f"/api/signups/{sid}/cart", json={"plan_code": "RAY-8", "sim_type": "ESIM", "quantity": 1})
+    assert client.put(f"/api/signups/{sid}/category", json={"category": "ACME-SIM-002"}).status_code == 409
+
+    # back office withdraws the allocation: the draft can't take more lines or submit
+    allocate(client, "ACME-SIM-001", active=False)
+    assert client.get(f"/api/signups/{sid}/categories").json()["categories"][0]["category"] == "ACME-SIM-002"
+    r = client.post(f"/api/signups/{sid}/cart", json={"plan_code": "RAY-8", "sim_type": "ESIM", "quantity": 1})
+    assert r.status_code == 409 and "no longer allocated" in r.json()["detail"]
+    assert client.post(f"/api/signups/{sid}/submit").status_code == 409
+
+
+def test_admin_category_allocations(client):
+    assert client.get("/api/admin/categories").status_code == 401
+    assert client.put("/api/admin/categories", headers=ADMIN, json={"category": "X", "uen": "2026TC809K"}).status_code == 422
+    allocate(client, "ACME-SIM-001")
+    moved = client.put("/api/admin/categories", headers=ADMIN,
+                       json={"category": "ACME-SIM-001", "uen": "53312345C", "description": "moved"}).json()
+    assert moved["uen"] == "53312345C" and moved["description"] == "moved"
+    rows = client.get("/api/admin/categories", headers=ADMIN).json()
+    assert [(r["category"], r["uen"]) for r in rows] == [("ACME-SIM-001", "53312345C")]
+    assert client.get(f"/api/admin/categories?uen={UEN}", headers=ADMIN).json() == []
+
+
+def test_company_details_editable_after_validation(client, s3):
+    load_inventory(client)
+    sid = start(client)  # contract uploaded, category ACME (allocated to UEN) chosen
+    base = {"uen": UEN, "company_name": "Acme Holdings Pte Ltd", "company_address": "2 Shenton Way"}
+
+    # name/address only: contract and category are kept
+    r = client.put(f"/api/signups/{sid}/company", json=base).json()
+    assert (r["company_name"], r["company_address"], r["uen_changed"]) == ("Acme Holdings Pte Ltd", "2 Shenton Way", False)
+    assert r["contract_uploaded"] and r["category"] == "ACME"
+
+    # invalid or blacklisted UEN is refused and nothing changes
+    assert client.put(f"/api/signups/{sid}/company", json={**base, "uen": "2026TC809K"}).status_code == 422
+    client.post("/api/admin/blacklist", headers=ADMIN, json={
+        "subject_type": "COMPANY", "id_type": "UEN", "id_value": "53312345C", "start_date": str(date.today())})
+    assert client.put(f"/api/signups/{sid}/company", json={**base, "uen": "53312345C"}).status_code == 403
+
+    # UEN can't change while the cart holds the old company's lines
+    line = client.post(f"/api/signups/{sid}/cart", json={"plan_code": "RAY-8", "sim_type": "ESIM", "quantity": 1}).json()["lines"][0]
+    assert client.put(f"/api/signups/{sid}/company", json={**base, "uen": "201912345R"}).status_code == 409
+    client.delete(f"/api/signups/{sid}/cart/{line['id']}")
+
+    # new UEN: contract must be uploaded again and the old company's category is cleared
+    r = client.put(f"/api/signups/{sid}/company", json={**base, "uen": "201912345R"}).json()
+    assert r["uen"] == "201912345R" and r["uen_changed"]
+    assert not r["contract_uploaded"] and r["category"] is None
+    assert client.get(f"/api/signups/{sid}").json()["uen"] == "201912345R"
+
+    # submitted sign-ups can't be edited
+    sid2 = start(client)
+    client.post(f"/api/signups/{sid2}/cart", json={"plan_code": "RAY-8", "sim_type": "ESIM", "quantity": 1})
+    assert client.post(f"/api/signups/{sid2}/submit").status_code == 200
+    assert client.put(f"/api/signups/{sid2}/company", json=base).status_code == 409
+
+
+def test_merchant_dropdown_lists_active_codes(client, anon):
+    client.put("/api/admin/merchants", headers=ADMIN, json={"code": "corp-dealer-02", "name": "Dealer Two"})
+    client.put("/api/admin/merchants", headers=ADMIN, json={"code": "OLD-01", "name": "Old", "active": False})
+    assert client.get("/api/merchants").json() == [
+        {"code": "CORP-DEALER-02", "name": "Dealer Two"},
+        {"code": "CORP-DIRECT-01", "name": "CorpOne Enterprise Direct Sales"}]
+    assert anon.get("/api/merchants").status_code == 401
+
+
+def test_numbers_available_before_pairing(client):
+    load_inventory(client, esim=2, physical=0, numbers=4)  # 2 pairs, 2 numbers free
+    sid = start(client)
+    a = client.get(f"/api/signups/{sid}/availability").json()
+    assert (a["numbers_available"], a["sims_waiting"], a["ESIM"]) == (2, 0, 2)
+    free = client.get(f"/api/signups/{sid}/sims?status=NUMBERS_WAITING").json()
+    assert free["total"] == 2 and all(p["iccid"] is None and p["number_status"] == "AVAILABLE" for p in free["pairs"])
+
+    # uploading SIMs uses up the free numbers; extra SIMs wait for a number
+    sims = "".join(f"{iccid(i)}\n" for i in range(10, 13))
+    r = client.post(f"/api/signups/{sid}/sims", data={"sim_type": "ESIM"}, files={"file": ("s.csv", sims)}).json()
+    assert (r["accepted"], r["paired"]) == (3, 2)
+    a = client.get(f"/api/signups/{sid}/availability").json()
+    assert (a["numbers_available"], a["sims_waiting"], a["ESIM"]) == (0, 1, 4)

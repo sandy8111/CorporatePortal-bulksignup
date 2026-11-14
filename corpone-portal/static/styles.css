@@ -186,3 +186,4 @@ tr.flash td { animation: flash 2.5s ease-out; }
 .tabs button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
 .tabs button.on span { color: #dbe8ff; }
 .tabs input { width: 220px; margin-left: auto; padding: 6px 10px; border-radius: 16px; font-size: 13px; }
+.locked { opacity: .45; pointer-events: none; user-select: none; }

@@ -18,13 +18,15 @@ cp .env.example .env        # set CORPONE_STORAGE_BACKEND=local if you have no A
 - Partner & AI gateway docs: http://localhost:8000/gateway/docs (spec at `/gateway/openapi.json`)
 - Tests: `.venv/bin/python -m pytest`
 
-Quick demo: in the back office, upload `sample_data/sims.csv` and `sample_data/numbers.csv`
-(category `ACME-CORP`). Open the portal and sign in with any email; with the default `console`
-email backend, the code is in the newest `.eml` file in `data/outbox/`. Then sign up with UEN
-`197401143C`, NRIC `S1234567D`, and merchant code `CORP-DIRECT-01`.
+Quick demo: in the back office, allocate SIM category `ACME-SIM-001` to UEN `197401143C`, then
+upload `sample_data/sims.csv` and `sample_data/numbers.csv` (both use `ACME-SIM-001`). Open the
+portal and sign in with any email; with the default `console` email backend, the code is in the
+newest `.eml` file in `data/outbox/`. Then sign up with UEN `197401143C`, NRIC `S1234567D` and
+merchant code `CORP-DIRECT-01`, and choose `ACME-SIM-001` in the plan & lines step.
 
-> Upgrading from the first version: tables are created on startup, so delete `data/corpone.db`
-> once to pick up the new columns. Production needs Alembic migrations.
+> Upgrading from an earlier version: tables are created on startup, so delete `data/corpone.db`
+> once to pick up schema changes (the latest: SIM category moved from the company step to the
+> plan & lines step, and the new `category_allocations` table). Production needs Alembic migrations.
 
 ## Account officer login (email OTP)
 
@@ -55,9 +57,9 @@ so eSIM QR codes can only go to an inbox the AO has proved they control.
 
 | Step | What happens | Rules |
 |---|---|---|
-| 1. Company | Enter UEN, name, address, inventory category; upload contract | UEN format and check letter (ACRA business, local company, other entity); company must not be blacklisted; contract must be a PDF ≤ 10 MB, stored in S3 with SSE |
-| 2. Account officer | Name, NRIC/FIN/passport, email, mobile, delegated merchant code | NRIC/FIN check letter; AO must not be blacklisted; merchant code must exist and be active |
-| 3. Plan & lines | Pick $8 Ray / $20 Flash / $40 Glare; optionally upload SIMs; pick SIM type and quantity | Allocates already-paired SIM+number lines from the company's category, then reserves them in the cart |
+| 1. Company | Enter UEN, name, address; upload contract. The details stay editable after validation ("Save changes") | UEN format and check letter (ACRA business, local company, other entity); company must not be blacklisted; contract must be a PDF ≤ 10 MB, stored in S3 with SSE. Changing the UEN re-runs these checks, is refused while the cart has lines, and clears the contract (upload it again) and any SIM category not allocated to the new UEN. Changing only the name or address keeps everything |
+| 2. Account officer | Name, NRIC/FIN/passport, email, mobile; pick the delegated merchant code from a drop-down of active codes (managed in the back office) | NRIC/FIN check letter; AO must not be blacklisted; merchant code must exist and be active |
+| 3. Plan & lines | Choose the SIM category; pick $8 Ray / $20 Flash / $40 Glare; optionally upload SIMs; pick SIM type and quantity | The category must be one the back office allocated to this UEN (e.g. `ACME-SIM-001`), and is required before SIM upload, inventory, cart and submit. It can't be changed while the cart has lines. Allocates already-paired SIM+number lines from that category, then reserves them in the cart |
 | 4. Review | Cart summary per plan, line list, monthly total; confirm and submit | Blacklist checked again at submit |
 | 5. Status | Live provisioning status per line | |
 
@@ -139,7 +141,12 @@ The portal compares the results with what the AO entered and shows them at the r
 - **Auto-pairing** runs after every upload. Unpaired SIMs are paired with unpaired numbers of the
   **same category**, oldest first. Status lifecycle: `AVAILABLE → PAIRED → RESERVED (cart) →
   ASSIGNED (line)`.
-- SIMs that an AO uploads in the wizard are locked to that sign-up's category.
+- **SIM categories are allocated per company.** In the back office ("SIM categories allocated to
+  companies", `PUT /api/admin/categories`), each category, e.g. `ACME-SIM-001`, is allocated to
+  one company UEN. A company can have several. An AO can only choose from their UEN's active
+  categories (`GET /api/signups/{id}/categories`, `PUT /api/signups/{id}/category`). Deactivating
+  an allocation stops draft sign-ups from adding lines or submitting until they choose another.
+- SIMs that an AO uploads in the wizard are locked to the sign-up's chosen category.
 - The upload result lists every SIM ↔ number pair it made. A SIM or number that was already
   uploaded is reported with its current pairing, but only when it is in the same category as the
   row. Otherwise the result just says "already uploaded under another category".
@@ -169,7 +176,7 @@ Each API call prints one line (page files under `/static` and `/healthz` are ski
 
 ```
 INFO corpone.api: GET /api/signups -> 200 3ms by=admin@corp1.com.sg id=9e8a8a42
-WARNING corpone.api: GET /api/admin/inventory/pairings?category=ACME-CORP -> 401 1ms by=- id=87d9954b
+WARNING corpone.api: GET /api/admin/inventory/pairings?category=ACME-SIM-001 -> 401 1ms by=- id=87d9954b
 ```
 
 - `by` is the signed-in AO's email, `admin` for the back office, `api-client:<id>` for a gateway

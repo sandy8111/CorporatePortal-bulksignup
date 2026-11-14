@@ -12,10 +12,10 @@ from pydantic import BaseModel, Field
 from app.gateway import inbound
 from app.gateway.outbound import gateway as outbound_gateway
 from app.models import (
-    ApiClient, BlacklistEntry, CorporateAccount, GatewayAuditLog, Merchant, OutboundCallLog, SimType,
+    ApiClient, BlacklistEntry, CategoryAllocation, CorporateAccount, GatewayAuditLog, Merchant, OutboundCallLog, SimType,
 )
-from app.schemas import BlacklistIn, MerchantIn
-from app.services import inventory, orders
+from app.schemas import BlacklistIn, CategoryAllocationIn, MerchantIn
+from app.services import categories, inventory, orders
 from app.validators import ValidationError, validate_category
 
 
@@ -102,6 +102,27 @@ def delete_blacklist(entry_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Entry not found")
     db.delete(e)
     db.commit()
+
+
+@router.get("/categories")
+def list_categories(uen: str | None = None, db: Session = Depends(get_db)):
+    """SIM categories and the company (UEN) each is allocated to, with lines ready to allocate."""
+    stmt = select(CategoryAllocation).order_by(CategoryAllocation.uen, CategoryAllocation.category)
+    if uen:
+        stmt = stmt.where(CategoryAllocation.uen == uen.strip().upper())
+    ready = categories.ready_counts(db)
+    return [categories.view(a, ready) for a in db.scalars(stmt)]
+
+
+@router.put("/categories")
+def allocate_category(body: CategoryAllocationIn, db: Session = Depends(get_db)):
+    """Allocate a SIM category to a company, or update/deactivate an allocation (one company per category)."""
+    a = db.scalars(select(CategoryAllocation).where(CategoryAllocation.category == body.category)).first() \
+        or CategoryAllocation(category=body.category)
+    a.uen, a.description, a.active = body.uen, body.description.strip(), body.active
+    db.add(a)
+    db.commit()
+    return categories.view(a, categories.ready_counts(db))
 
 
 @router.get("/merchants")

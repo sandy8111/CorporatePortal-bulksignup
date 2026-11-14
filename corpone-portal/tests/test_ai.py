@@ -65,7 +65,7 @@ def test_disabled_by_default():
 def test_contract_upload_triggers_review(client, fake_ai):
     _, state = fake_ai
     state["resp"] = _response(GOOD)
-    sid = client.post("/api/signups", json={"uen": UEN, "company_name": "Acme Pte Ltd", "category": "ACME"}).json()["id"]
+    sid = client.post("/api/signups", json={"uen": UEN, "company_name": "Acme Pte Ltd"}).json()["id"]
     r = client.post(f"/api/signups/{sid}/contract", files={"file": ("c.pdf", PDF, "application/pdf")})
     assert r.json()["ai_review"] is True
     review = client.get(f"/api/signups/{sid}").json()["contract_ai_review"]
