@@ -1,0 +1,12 @@
+stateDiagram-v2
+  direction LR
+  [*] --> DRAFT: POST /api/signups (UEN validated)
+  DRAFT --> DRAFT: contract, account officer, SIM category, cart changes
+  DRAFT --> SUBMITTED: POST /submit (checks pass)
+  SUBMITTED --> COMPLETED: every line provisioned
+  SUBMITTED --> PARTIALLY_FAILED: some lines failed
+  SUBMITTED --> FAILED: billing account or all lines failed
+  PARTIALLY_FAILED --> COMPLETED: back office retry succeeds
+  FAILED --> COMPLETED: back office retry succeeds
+  COMPLETED --> [*]
+

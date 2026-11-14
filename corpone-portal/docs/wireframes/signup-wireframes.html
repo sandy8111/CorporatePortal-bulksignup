@@ -1,0 +1,216 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>CorpOne sign-up · wireframes</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Noto Sans", "Segoe UI", Arial, sans-serif; color: #2b2f36; background: #fff; }
+  #d { width: 1860px; padding: 26px 28px 30px; }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  .sub { color: #6b7280; font-size: 13.5px; margin-bottom: 18px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+  .frame { border: 2px solid #3b4250; border-radius: 10px; overflow: hidden; background: #fff; display: flex; flex-direction: column; }
+  .bar { background: #3b4250; color: #fff; font-size: 12px; padding: 6px 10px; display: flex; gap: 8px; align-items: center; }
+  .bar .dots i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #8a93a3; margin-right: 4px; }
+  .bar .url { flex: 1; background: #545c6b; border-radius: 5px; padding: 2px 8px; font-size: 11px; color: #d7dbe2; }
+  .top { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1.5px solid #d5d9e0; font-size: 12px; }
+  .logo { font-weight: 800; letter-spacing: .02em; }
+  .logo::before { content: "C1"; display: inline-block; background: #3b4250; color: #fff; border-radius: 4px; padding: 0 4px; margin-right: 5px; font-size: 10px; }
+  .body { display: grid; grid-template-columns: 112px 1fr; flex: 1; }
+  .side { border-right: 1.5px solid #d5d9e0; padding: 10px 8px; font-size: 10.5px; color: #6b7280; display: flex; flex-direction: column; gap: 6px; background: #f6f7f9; }
+  .side span { display: flex; gap: 5px; align-items: center; }
+  .side span::before { content: attr(data-n); display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #9aa1ad; font-size: 9px; font-weight: 700; flex: none; }
+  .side .on { color: #111; font-weight: 700; } .side .on::before { background: #3b4250; color: #fff; border-color: #3b4250; }
+  .side .ok::before { content: "ok"; font-size: 7px; background: #c8ccd4; border-color: #c8ccd4; color: #333; }
+  .main { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .08em; color: #6b7280; text-transform: uppercase; }
+  h3 { margin: 0; font-size: 16px; }
+  .lead { font-size: 11.5px; color: #6b7280; margin: -2px 0 2px; }
+  .sec { border: 1.5px dashed #b9bfca; border-radius: 8px; padding: 8px 9px; display: flex; flex-direction: column; gap: 6px; }
+  .sec .h { font-size: 11.5px; font-weight: 700; display: flex; gap: 6px; align-items: center; }
+  .sec .h::before { content: attr(data-n); display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: #e3e6eb; font-size: 9px; }
+  .row { display: flex; gap: 7px; align-items: flex-end; flex-wrap: wrap; }
+  .f { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 70px; }
+  .f label { font-size: 9.5px; color: #6b7280; }
+  .in { height: 22px; border: 1.5px solid #b9bfca; border-radius: 5px; background: #fff; font-size: 10px; color: #9aa1ad; padding: 3px 6px; overflow: hidden; white-space: nowrap; }
+  .in.ro { background: #eef0f3; }
+  .in.ta { height: 34px; }
+  .btn { height: 24px; border-radius: 5px; background: #3b4250; color: #fff; font-size: 10.5px; font-weight: 700; display: inline-grid; place-items: center; padding: 0 10px; white-space: nowrap; }
+  .btn.s { background: #fff; color: #3b4250; border: 1.5px solid #3b4250; }
+  .btn.off { background: #c8ccd4; }
+  .msg { border-radius: 5px; padding: 5px 7px; font-size: 10px; background: #eceff3; border-left: 3px solid #8a93a3; }
+  .seg { display: inline-flex; border: 1.5px solid #b9bfca; border-radius: 5px; overflow: hidden; height: 22px; font-size: 10px; }
+  .seg i { font-style: normal; padding: 3px 8px; } .seg i:first-child { background: #3b4250; color: #fff; }
+  .tbl { border: 1.5px solid #d5d9e0; border-radius: 5px; font-size: 9.5px; overflow: hidden; }
+  .tbl div { display: grid; padding: 3px 6px; border-top: 1px solid #e5e8ec; color: #6b7280; }
+  .tbl div:first-child { border-top: 0; background: #eef0f3; font-weight: 700; color: #3b4250; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+  .stats div { border: 1.5px solid #d5d9e0; border-radius: 5px; padding: 3px 5px; font-size: 9px; color: #6b7280; }
+  .stats b { display: block; font-size: 13px; color: #2b2f36; }
+  .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .plans div { border: 1.5px solid #b9bfca; border-radius: 6px; padding: 4px 6px; font-size: 9.5px; color: #6b7280; }
+  .plans div b { display: block; color: #2b2f36; font-size: 11px; } .plans .sel { border: 2px solid #3b4250; background: #f1f2f5; }
+  .cartbar { background: #3b4250; color: #fff; border-radius: 6px; padding: 5px 8px; display: flex; justify-content: space-between; align-items: center; font-size: 10.5px; }
+  .cartbar .btn { background: #fff; color: #3b4250; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .box { border: 1.5px solid #d5d9e0; border-radius: 6px; padding: 5px 7px; font-size: 9.5px; color: #6b7280; }
+  .box b { color: #2b2f36; font-size: 10.5px; display: flex; justify-content: space-between; }
+  .box b u { font-weight: 400; color: #3b4250; }
+  .tl { display: flex; flex-direction: column; gap: 3px; font-size: 9.5px; }
+  .tl span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #3b4250; margin-right: 5px; vertical-align: 0; }
+  .tl span.run::before { background: #fff; border: 2px solid #3b4250; width: 5px; height: 5px; }
+  .cap { margin-top: 6px; font-size: 11px; color: #4b5563; line-height: 1.4; }
+  .cap b { color: #111; }
+  .note { position: relative; }
+  .n { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: #c2410c; color: #fff; font-size: 9px; font-weight: 800; margin-left: 4px; vertical-align: 1px; }
+  .legend { margin-top: 18px; font-size: 12px; color: #4b5563; }
+</style></head>
+<body><div id="d">
+  <h1>CorpOne corporate sign-up · wireframes</h1>
+  <div class="sub">Low-fidelity layout of the six steps as built in <b>static/index.html</b>. Orange numbers refer to the notes under each screen.</div>
+  <div class="grid">
+
+  <!-- 1 -->
+  <div>
+  <div class="frame">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">…/ports/8501/</span></div>
+    <div class="top"><span class="logo">CorpOne Business</span><span>Back office</span></div>
+    <div class="body">
+      <div class="side"><span data-n="1" class="on">Sign in</span><span data-n="2">Company</span><span data-n="3">Account officer</span><span data-n="4">Plan &amp; lines</span><span data-n="5">Review &amp; submit</span><span data-n="6">Provisioning</span></div>
+      <div class="main">
+        <div class="eyebrow">Step 1 of 6</div><h3>Sign in as account officer</h3>
+        <div class="msg">Test environment: admin@corp1.com.sg signs in with the fixed test code <span class="n">a</span></div>
+        <div class="lead">We'll email you a 6-digit code. Use your work email.</div>
+        <div class="f"><label>Work email</label><div class="in">name@company.com.sg</div></div>
+        <div class="btn">Email me a code</div>
+        <div class="sec"><div class="f"><label>Enter the code sent to name@company.com.sg</label><div class="in">• • • • • •</div></div>
+          <div class="row"><div class="btn s">Change email</div><div class="btn s">Resend</div><span style="flex:1"></span><div class="btn">Verify &amp; continue</div></div>
+          <div style="font-size:9.5px;color:#6b7280">The code expires in 5 minutes. <span class="n">b</span></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="cap"><b>a</b> banner only when test mode is on; the code itself is never shown. <b>b</b> 5 wrong tries burns the code; resend after 30 s; 5 codes per email per 15 min.</div>
+  </div>
+
+  <!-- 2 -->
+  <div>
+  <div class="frame">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">…/ports/8501/</span></div>
+    <div class="top"><span class="logo">CorpOne Business</span><span>admin@corp1.com.sg · Sign out</span></div>
+    <div class="body">
+      <div class="side"><span data-n="1" class="ok">Sign in</span><span data-n="2" class="on">Company</span><span data-n="3">Account officer</span><span data-n="4">Plan &amp; lines</span><span data-n="5">Review &amp; submit</span><span data-n="6">Provisioning</span></div>
+      <div class="main">
+        <div class="eyebrow">Step 2 of 6</div><h3>Company information</h3>
+        <div class="sec"><div class="h" data-n="1">Company details</div>
+          <div class="row"><div class="f"><label>UEN (Singapore BRN)</label><div class="in" style="color:#2b2f36">197401143C</div></div><div class="f"><label>Registered company name</label><div class="in ro">Acme Pte Ltd</div></div></div>
+          <div class="f"><label>Registered address</label><div class="in ta ro">1 Raffles Place</div></div>
+          <div class="msg">Existing corporate customer: name and address retrieved from our records. <span class="n">c</span></div>
+          <div class="row"><span style="flex:1"></span><div class="btn">Validate UEN</div></div></div>
+        <div class="sec"><div class="h" data-n="2">Signed contract agreement (PDF, max 10 MB)</div>
+          <div class="row"><div class="f"><div class="in">Choose File · contract.pdf</div></div><div class="btn">Upload</div></div></div>
+        <div class="row"><span style="flex:1"></span><div class="btn off">Continue to account officer</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="cap"><b>c</b> checked when the UEN field is left: invalid or blacklisted UEN shows the reason; a new company's name and address are typed and saved on Validate. After validating, the button becomes "Save changes"; changing the UEN needs the contract again.</div>
+  </div>
+
+  <!-- 3 -->
+  <div>
+  <div class="frame">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">…/ports/8501/</span></div>
+    <div class="top"><span class="logo">CorpOne Business</span><span>admin@corp1.com.sg · Sign out</span></div>
+    <div class="body">
+      <div class="side"><span data-n="1" class="ok">Sign in</span><span data-n="2" class="ok">Company</span><span data-n="3" class="on">Account officer</span><span data-n="4">Plan &amp; lines</span><span data-n="5">Review &amp; submit</span><span data-n="6">Provisioning</span></div>
+      <div class="main">
+        <div class="eyebrow">Step 3 of 6</div><h3>Account officer</h3>
+        <div class="lead">The company representative who manages these lines.</div>
+        <div class="row"><div class="f"><label>Full name (as per ID)</label><div class="in"></div></div><div class="f"><label>Designation</label><div class="in">e.g. IT Manager</div></div><div class="f"><label>ID type</label><div class="in">NRIC</div></div></div>
+        <div class="row"><div class="f"><label>ID number</label><div class="in">S1234567D</div></div><div class="f"><label>Email (verified at sign-in)</label><div class="in ro">admin@corp1.com.sg</div></div><div class="f"><label>Mobile</label><div class="in">9xxxxxxx</div></div></div>
+        <div class="f"><label>Delegated merchant code</label><div class="in">CORP-DIRECT-01 – CorpOne Enterprise Direct Sales <span class="n">d</span></div></div>
+        <div class="row" style="margin-top:auto"><div class="btn s">Back</div><span style="flex:1"></span><div class="btn">Verify &amp; continue</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="cap"><b>d</b> drop-down of active merchant codes (managed in the back office). Checks: NRIC/FIN check letter, not blacklisted, email must be the sign-in email.</div>
+  </div>
+
+  <!-- 4 -->
+  <div>
+  <div class="frame">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">…/ports/8501/</span></div>
+    <div class="top"><span class="logo">CorpOne Business</span><span>admin@corp1.com.sg · Sign out</span></div>
+    <div class="body">
+      <div class="side"><span data-n="1" class="ok">Sign in</span><span data-n="2" class="ok">Company</span><span data-n="3" class="ok">Account officer</span><span data-n="4" class="on">Plan &amp; lines</span><span data-n="5">Review &amp; submit</span><span data-n="6">Provisioning</span></div>
+      <div class="main">
+        <div class="eyebrow">Step 4 of 6</div><h3>Plan &amp; lines</h3>
+        <div class="sec"><div class="h" data-n="1">Select SIM category <span class="n">e</span></div>
+          <div class="row"><div class="f"><div class="in">ACME-SIM-001 – Acme HQ · your company (12 eSIM, 8 physical ready)</div></div><div class="btn">Use this category</div></div></div>
+        <div class="sec"><div class="h" data-n="2">Upload SIM cards (optional)</div>
+          <div class="row"><div class="f"><div class="in">Choose File · sims.csv</div></div><div class="seg"><i>eSIM</i><i>Physical</i></div><div class="btn">Upload SIMs</div></div>
+          <div style="font-size:9.5px;color:#6b7280">CSV format · download template <span class="n">f</span></div></div>
+        <div class="sec"><div class="h" data-n="3">Numbers available · ACME-SIM-001</div>
+          <div class="stats"><div><b>3</b>numbers to pair</div><div><b>1</b>SIMs waiting</div><div><b>12</b>eSIM ready</div><div><b>8</b>physical ready</div></div></div>
+        <div class="sec"><div class="h" data-n="4">Pair SIMs &amp; add lines</div>
+          <div class="plans"><div><b>Ray $8</b>10 GB</div><div class="sel"><b>Flash $20</b>100 GB</div><div><b>Glare $40</b>300 GB</div></div>
+          <div class="row"><div class="seg"><i>eSIM</i><i>Physical</i></div><div class="f" style="max-width:70px"><div class="in">3</div></div><div class="btn">Add paired lines to cart</div></div>
+          <div class="tbl"><div style="grid-template-columns:2fr 3fr 1fr 2fr">Number<span>SIM ICCID</span><span>Type</span><span>Plan</span></div><div style="grid-template-columns:2fr 3fr 1fr 2fr">81000000<span>8965…100000</span><span>eSIM</span><span>Flash $20</span></div></div></div>
+        <div class="cartbar"><span>Cart <b>3 lines</b> · <b>$60.00</b>/month</span><span class="btn">Review cart</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="cap"><b>e</b> only categories allocated to this UEN or open to all; sections 2–4 stay greyed out until one is chosen. <b>f</b> SIMs pair automatically with available numbers. A SIM inventory list (SIM status, paired number, number status) sits below the cart.</div>
+  </div>
+
+  <!-- 5 -->
+  <div>
+  <div class="frame">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">…/ports/8501/</span></div>
+    <div class="top"><span class="logo">CorpOne Business</span><span>admin@corp1.com.sg · Sign out</span></div>
+    <div class="body">
+      <div class="side"><span data-n="1" class="ok">Sign in</span><span data-n="2" class="ok">Company</span><span data-n="3" class="ok">Account officer</span><span data-n="4" class="ok">Plan &amp; lines</span><span data-n="5" class="on">Review &amp; submit</span><span data-n="6">Provisioning</span></div>
+      <div class="main">
+        <div class="eyebrow">Step 5 of 6</div><h3>Review &amp; submit</h3>
+        <div class="two"><div class="box"><b>Company <u>Edit</u></b>Acme Pte Ltd · 197401143C<br>SIM category ACME-SIM-001<br>Contract contract.pdf</div>
+          <div class="box"><b>Account officer <u>Edit</u></b>Tan Mei Ling · NRIC S****567D<br>admin@corp1.com.sg · 91234567<br>Merchant CORP-DIRECT-01</div></div>
+        <div class="msg">AI contract check: no issues found (advisory) <span class="n">g</span></div>
+        <div style="font-size:11px;font-weight:700">Cart summary</div>
+        <div class="tbl"><div style="grid-template-columns:3fr 2fr 1fr 1fr 2fr">Plan<span>$/line</span><span>eSIM</span><span>Phys.</span><span>Subtotal</span></div><div style="grid-template-columns:3fr 2fr 1fr 1fr 2fr">Flash $20<span>$20.00</span><span>3</span><span>0</span><span>$60.00</span></div></div>
+        <div style="font-size:11px;font-weight:700;text-align:right">3 lines · $60.00 / month</div>
+        <div class="tbl"><div style="grid-template-columns:1fr 3fr 4fr 2fr 2fr">#<span>Number</span><span>ICCID</span><span>Plan</span><span></span></div><div style="grid-template-columns:1fr 3fr 4fr 2fr 2fr">1<span>81000000</span><span>8965…100000</span><span>Flash</span><span>Remove</span></div></div>
+        <div style="font-size:10px"><span style="display:inline-block;width:10px;height:10px;border:1.5px solid #3b4250;border-radius:2px;vertical-align:-1px;margin-right:5px"></span>I confirm the details are correct and authorise CorpOne to create these lines.</div>
+        <div class="row"><div class="btn s">Back</div><span style="flex:1"></span><div class="btn off">Submit order</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="cap"><b>g</b> shown only when AI review is enabled. "Submit order" is enabled after the confirm box is ticked; blacklist is checked again on submit.</div>
+  </div>
+
+  <!-- 6 -->
+  <div>
+  <div class="frame">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">…/ports/8501/</span></div>
+    <div class="top"><span class="logo">CorpOne Business</span><span>admin@corp1.com.sg · Sign out</span></div>
+    <div class="body">
+      <div class="side"><span data-n="1" class="ok">Sign in</span><span data-n="2" class="ok">Company</span><span data-n="3" class="ok">Account officer</span><span data-n="4" class="ok">Plan &amp; lines</span><span data-n="5" class="ok">Review &amp; submit</span><span data-n="6" class="on">Provisioning</span></div>
+      <div class="main">
+        <div class="eyebrow">Step 6 of 6</div><h3>Order submitted</h3>
+        <div class="lead">We're setting up your lines. This page updates automatically. <span class="n">h</span></div>
+        <div class="two"><div class="box"><b>Progress</b><div class="tl">
+            <span>Order submitted · 3 lines</span><span>Company profile &amp; account officer created</span>
+            <span>Billing account created · BA-…</span><span class="run">Lines activated on network &amp; billing · 2 of 3</span>
+            <span class="run">eSIM QR codes emailed</span><span class="run">Ready to use</span></div></div>
+          <div class="box"><b>Account</b>Account no. CA3677758649<br>Order status SUBMITTED<br>Company Acme Pte Ltd<br>Account officer Tan Mei Ling</div></div>
+        <div style="font-size:11px;font-weight:700">Lines</div>
+        <div class="tbl"><div style="grid-template-columns:3fr 4fr 1fr 2fr 2fr 2fr">Number<span>ICCID</span><span>Type</span><span>Plan</span><span>Status</span><span>eSIM QR</span></div>
+          <div style="grid-template-columns:3fr 4fr 1fr 2fr 2fr 2fr">81000000<span>8965…100000</span><span>eSIM</span><span>Flash</span><span>Provisioned</span><span>Emailed</span></div>
+          <div style="grid-template-columns:3fr 4fr 1fr 2fr 2fr 2fr">91000001<span>8965…100001</span><span>eSIM</span><span>Flash</span><span>Pending</span><span>–</span></div></div>
+        <div class="row" style="margin-top:auto"><span style="flex:1"></span><div class="btn">Start a new sign-up</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="cap"><b>h</b> the page polls the account until the order is COMPLETED, PARTIALLY_FAILED or FAILED. eSIM QR codes go only to the AO's verified email. Failed lines are retried from the back office.</div>
+  </div>
+
+  </div>
+  <div class="legend">Back office screens (categories, uploads, inventory lists, orders &amp; carts, merchants, blacklist, API keys, monitoring) are not shown here.</div>
+</div></body></html>

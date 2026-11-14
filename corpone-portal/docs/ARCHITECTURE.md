@@ -17,6 +17,9 @@ stores or checks it, and the production recommendation, with a key and secret re
 
 Source: [integration.html](integration.html).
 
+The sign-up journey in detail (UML activity, sequence and state diagrams, artifacts per step and
+wireframes): [SIGNUP_FLOW.md](SIGNUP_FLOW.md).
+
 ## Runtime
 
 - **Edge (test environment):** CloudFront (HTTPS) → nginx on :80 → `/ports/8501/` → the app on

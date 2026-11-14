@@ -1,0 +1,8 @@
+stateDiagram-v2
+  direction LR
+  [*] --> AVAILABLE: SIM or number uploaded
+  AVAILABLE --> PAIRED: SIM upload pairs SIM + number (same category)
+  PAIRED --> RESERVED: added to a cart
+  RESERVED --> PAIRED: removed from the cart
+  RESERVED --> ASSIGNED: order submitted
+  ASSIGNED --> [*]
