@@ -3,6 +3,36 @@
 How the portal, back office and partner gateway fit together, end to end. For running the app and
 the detailed rules of each step, see the [README](../README.md).
 
+![CorpOne Corporate Portal architecture](architecture.png)
+
+The picture is generated from [architecture.html](architecture.html); edit that file and take a new
+screenshot to update it.
+
+## Runtime
+
+- **Edge (test environment):** CloudFront (HTTPS) → nginx on :80 → `/ports/8501/` → the app on
+  127.0.0.1:8501. In production, a load balancer or CDN over HTTPS, with `CORPONE_COOKIE_SECURE=true`.
+- **Process model:** one uvicorn process with one asyncio event loop. Sync route handlers run in the
+  thread pool. Provisioning, eSIM QR emails and the AI contract review run as FastAPI
+  `BackgroundTasks` in the same process, after the response is sent.
+- **Request path:** RequestLog (assigns `X-Request-ID`, times the call) → NoStoreApi
+  (`Cache-Control: no-store, private` on `/api` and `/gateway`) → PortProxyPrefix → route → services →
+  database. One log line per call: `POST /api/signups/…/cart -> 200 6ms by=<caller> id=<request id>`.
+- **Startup:** read `.env` / `CORPONE_*`, create missing tables (existing tables are not altered),
+  seed plans and the default merchant, purge expired codes and sessions, start listening.
+
+| State | Where it lives | Implication |
+|---|---|---|
+| Sign-in limit per IP, rate limit per API key, circuit breakers | Process memory | Reset on restart; not shared between processes. Behind nginx every client IP is the proxy's |
+| Provisioning in progress | In-process background task | Lost if the process stops mid-run; use **Retry provisioning** in the back office |
+| Codes, sessions, inventory, uploads, orders, gateway logs | Database | Survive restarts. SQLite serialises writes; `SKIP LOCKED` only takes effect on a real RDBMS |
+| Contracts, emails | `data/uploads/`, `data/outbox/` (dev) | Survive restarts; move to S3 and SES/SMTP in production |
+| Static UI | `static/`, read per request | UI changes go live without a restart; Python changes need one |
+
+To scale beyond one process: Postgres with migrations, a shared store (e.g. Redis) for limits and
+breakers, a job queue (e.g. SQS plus a worker) for provisioning, and `X-Forwarded-For` trusted only
+from the load balancer.
+
 ## Components
 
 ```mermaid

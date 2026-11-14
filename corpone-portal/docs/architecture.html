@@ -1,0 +1,152 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Noto Sans", "Segoe UI", Arial, sans-serif; color: #1b2533; background: #fff; }
+  #d { width: 1680px; padding: 28px 30px 30px; }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  .sub { color: #6b7787; font-size: 14px; margin-bottom: 22px; }
+  .cols { display: grid; grid-template-columns: 200px 34px 190px 34px 1fr 34px 250px; align-items: stretch; }
+  .col { display: flex; flex-direction: column; gap: 12px; }
+  .colt { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #6b7787; margin-bottom: 2px; }
+  .box { border: 1.5px solid; border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.35; background: #fff; }
+  .box b { display: block; font-size: 14.5px; }
+  .box small { color: #5b6675; font-size: 12.5px; }
+  .user { border-color: #0a58ca; background: #e8f0fe; }
+  .edge { border-color: #c77700; background: #fff4e5; }
+  .app  { border-color: #1b2533; }
+  .svc  { border-color: #9aa5b4; background: #fafbfc; padding: 8px 10px; font-size: 13px; }
+  .mem  { border-color: #c62828; background: #fdecea; padding: 8px 10px; font-size: 13px; }
+  .disk { border-color: #1e7e34; background: #e7f6ec; }
+  .ext  { border-color: #6b7787; background: #f1f3f6; border-style: dashed; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 8px; padding: 1px 7px; margin-top: 4px; }
+  .tag.dev { background: #fff4e5; color: #8a4b00; } .tag.prod { background: #e8f0fe; color: #073f91; }
+  .arrow { display: flex; align-items: center; justify-content: center; }
+  .arrow i { width: 0; height: 0; border-top: 11px solid transparent; border-bottom: 11px solid transparent; border-left: 16px solid #9aa5b4; }
+  .arrow.both i { position: relative; }
+  .frame { border: 2px solid #1b2533; border-radius: 14px; padding: 12px 14px 14px; background: #fcfdff; display: flex; flex-direction: column; gap: 10px; }
+  .frame > .ft { font-weight: 700; font-size: 15px; display: flex; justify-content: space-between; }
+  .frame > .ft span { font-weight: 400; color: #6b7787; font-size: 13px; }
+  .layer { border-radius: 10px; padding: 8px 10px 10px; }
+  .layer .lt { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6b7787; margin-bottom: 6px; }
+  .row { display: grid; gap: 8px; }
+  .r2 { grid-template-columns: repeat(2, 1fr); } .r3 { grid-template-columns: repeat(3, 1fr); }
+  .r4 { grid-template-columns: repeat(4, 1fr); } .r5 { grid-template-columns: repeat(5, 1fr); }
+  .l-mw { background: #f1f3f6; } .l-ui { background: #eef6ff; } .l-api { background: #f4f1ff; }
+  .l-svc { background: #f7f8fa; } .l-out { background: #fff8f0; } .l-mem { background: #fff5f5; }
+  .down { text-align: center; color: #9aa5b4; font-size: 12px; line-height: 1; margin: -4px 0; }
+  .legend { display: flex; gap: 18px; margin-top: 20px; font-size: 13px; color: #3c4858; flex-wrap: wrap; }
+  .legend span::before { content: ""; display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid; vertical-align: -2px; margin-right: 6px; }
+  .lg-user::before { background: #e8f0fe; border-color: #0a58ca !important; }
+  .lg-edge::before { background: #fff4e5; border-color: #c77700 !important; }
+  .lg-svc::before { background: #fafbfc; border-color: #9aa5b4 !important; }
+  .lg-mem::before { background: #fdecea; border-color: #c62828 !important; }
+  .lg-disk::before { background: #e7f6ec; border-color: #1e7e34 !important; }
+  .lg-ext::before { background: #f1f3f6; border-color: #6b7787 !important; border-style: dashed !important; }
+</style></head>
+<body><div id="d">
+  <h1>CorpOne Corporate Portal · architecture</h1>
+  <div class="sub">Corporate bulk-line sign-up portal, back office and partner gateway · runtime as deployed in the test environment (production differences tagged)</div>
+
+  <div class="cols">
+    <!-- Clients -->
+    <div class="col">
+      <div class="colt">Clients</div>
+      <div class="box user"><b>Account officer</b><small>Browser · sign-up portal<br>email one-time code, session cookie</small></div>
+      <div class="box user"><b>CorpOne back office</b><small>Browser · admin page<br>X-Admin-Token</small></div>
+      <div class="box user"><b>Partner systems</b><small>Dealer CRM, ops tools<br>API key + scopes</small></div>
+      <div class="box user"><b>AI agent</b><small>Claude via <b style="display:inline;font-size:12.5px">mcp_server</b><br>tools: list_plans, validate_uen, check_blacklist, inventory_summary, get_account_status, retry_provisioning</small></div>
+    </div>
+    <div class="arrow"><i></i></div>
+
+    <!-- Edge -->
+    <div class="col">
+      <div class="colt">Edge</div>
+      <div class="box edge"><b>CloudFront</b><small>HTTPS<br>https://&lt;ide&gt;.cloudfront.net</small></div>
+      <div class="down" style="font-size:13px;color:#8a95a5">forwards to</div>
+      <div class="box edge"><b>nginx :80</b><small>/ to IDE :8080<br>/ports/8501/ to app :8501</small></div>
+      <div class="box edge" style="margin-top:auto"><b>Production</b><small>Load balancer / CDN over HTTPS, cookies Secure</small><br><span class="tag prod">PROD</span></div>
+    </div>
+    <div class="arrow"><i></i></div>
+
+    <!-- App -->
+    <div class="frame">
+      <div class="ft">corpone-portal · FastAPI on uvicorn :8501 <span>1 process · 1 event loop · sync routes in thread pool</span></div>
+
+      <div class="layer l-mw">
+        <div class="lt">Middleware (every request)</div>
+        <div class="row r3">
+          <div class="box svc"><b>RequestLog</b>one line per call, X-Request-ID</div>
+          <div class="box svc"><b>NoStoreApi</b>API responses never cached</div>
+          <div class="box svc"><b>PortProxyPrefix</b>/ports/&lt;n&gt; path prefix</div>
+        </div>
+      </div>
+
+      <div class="layer l-ui">
+        <div class="lt">Web UI (static, fingerprinted JS/CSS, pages no-store)</div>
+        <div class="row r2">
+          <div class="box svc"><b>Sign-up portal</b>login · company · account officer · plan &amp; lines · review · status</div>
+          <div class="box svc"><b>Back office</b>categories · uploads · inventory lists · orders &amp; carts · merchants · blacklist · API keys · monitoring</div>
+        </div>
+      </div>
+
+      <div class="layer l-api">
+        <div class="lt">APIs</div>
+        <div class="row r4">
+          <div class="box svc"><b>/api/auth</b>OTP request / verify, session</div>
+          <div class="box svc"><b>/api/signups</b>company lookup, steps, SIM category, SIM upload, cart, submit</div>
+          <div class="box svc"><b>/api/admin</b>inventory, uploads, lists, categories, orders, merchants, blacklist</div>
+          <div class="box svc"><b>/gateway/v1</b>partners &amp; agents: keys, scopes, rate limit, audit</div>
+        </div>
+      </div>
+
+      <div class="layer l-svc">
+        <div class="lt">Services (business rules)</div>
+        <div class="row r5">
+          <div class="box svc"><b>inventory</b>upload, pair on SIM upload, lists, upload history</div>
+          <div class="box svc"><b>categories</b>per company UEN or all companies</div>
+          <div class="box svc"><b>orders</b>submit, provision, eSIM QR</div>
+          <div class="box svc"><b>validators · blacklist</b>UEN, NRIC/FIN, ICCID, MSISDN</div>
+          <div class="box svc"><b>email · storage · ai</b>codes &amp; QRs, contracts, contract review</div>
+        </div>
+      </div>
+
+      <div class="row r2">
+        <div class="layer l-out">
+          <div class="lt">After submit / upload</div>
+          <div class="row r2">
+            <div class="box svc"><b>BackgroundTasks</b>provisioning, eSIM QR email, AI contract review</div>
+            <div class="box svc"><b>Outbound gateway</b>retries + backoff, circuit breaker, rate limit, call log</div>
+          </div>
+        </div>
+        <div class="layer l-mem">
+          <div class="lt">In memory · reset on restart</div>
+          <div class="row r3">
+            <div class="box mem"><b>Sign-in limit</b>per IP</div>
+            <div class="box mem"><b>Rate limit</b>per API key</div>
+            <div class="box mem"><b>Breakers</b>network, billing, ai</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="arrow"><i></i></div>
+
+    <!-- Data & external -->
+    <div class="col">
+      <div class="colt">Data</div>
+      <div class="box disk"><b>Database</b><small>SQLite data/corpone.db · inventory, categories, uploads, sign-ups, carts, companies, accounts, lines, sessions, logs</small><br><span class="tag dev">DEV</span> <span class="tag prod">PROD: RDS Postgres + migrations</span></div>
+      <div class="box disk"><b>Contracts</b><small>data/uploads/</small><br><span class="tag dev">DEV</span> <span class="tag prod">PROD: S3 + SSE</span></div>
+      <div class="box disk"><b>Email</b><small>data/outbox/*.eml (codes, eSIM QRs)</small><br><span class="tag dev">DEV</span> <span class="tag prod">PROD: SES / SMTP</span></div>
+      <div class="box disk"><b>Logs</b><small>data/server.log · corpone.api</small></div>
+      <div class="colt" style="margin-top:6px">External (via outbound gateway)</div>
+      <div class="box ext"><b>Network API</b><small>line activation · mock now</small></div>
+      <div class="box ext"><b>Billing API</b><small>accounts, subscriptions · mock now</small></div>
+      <div class="box ext"><b>Claude</b><small>Anthropic API / Bedrock · disabled now</small></div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span class="lg-user">Clients</span><span class="lg-edge">Edge</span><span class="lg-svc">App components</span>
+    <span class="lg-mem">In-memory state</span><span class="lg-disk">Stored data</span><span class="lg-ext">External systems</span>
+  </div>
+</div></body></html>
