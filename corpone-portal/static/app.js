@@ -118,9 +118,52 @@ async function signedIn() {
 
 // ---------------------------------------------------------------- step 2: company + contract
 // After the UEN is validated the details stay editable; saving re-validates them.
+// Company details by UEN: a customer's (has a submitted order) are retrieved and locked; a company saved
+// earlier without an order is retrieved and can still be corrected; a new UEN's details are saved on Validate.
+function setCompanyFields(mode, name, address) {
+  const f = $("#companyForm"), box = $("#companyLookup");
+  const locked = mode === "customer";
+  for (const k of ["company_name", "company_address"]) f.elements[k].readOnly = locked;
+  if (mode === "customer" || mode === "saved") {
+    f.elements.company_name.value = name || "";
+    f.elements.company_address.value = address || "";
+  }
+  const text = {
+    customer: "Existing corporate customer: name and address retrieved from our records.",
+    saved: "Company found: name and address retrieved. You can still correct them before the first order is submitted.",
+    new: "New company: enter its registered name and address. They are saved when you validate the UEN.",
+  }[mode];
+  box.textContent = text || "";
+  box.className = text ? "msg info" : "msg hidden";
+}
+
+let lookedUpUen = null;
+async function lookupUen() {
+  const f = $("#companyForm"), uen = f.elements.uen.value.trim();
+  if (!uen || uen.toUpperCase() === lookedUpUen) return;
+  lookedUpUen = uen.toUpperCase();
+  try {
+    const c = await api("GET", `api/companies/${encodeURIComponent(uen)}`);
+    if (!c.existing && f.elements.company_name.readOnly) { f.elements.company_name.value = ""; f.elements.company_address.value = ""; }
+    setCompanyFields(c.customer ? "customer" : c.existing ? "saved" : "new", c.company_name, c.company_address);
+    msg("msg2", "");
+  } catch (err) {
+    setCompanyFields(null);
+    msg("msg2", err.message);
+  }
+}
+const uenField = $("#companyForm").elements.uen;
+uenField.addEventListener("blur", lookupUen);      // leaving the UEN field checks it
+uenField.addEventListener("change", lookupUen);
+uenField.addEventListener("input", () => { lookedUpUen = null; });
+
 function showCompany(s) {
   const f = $("#companyForm");
   for (const k of ["uen", "company_name", "company_address"]) f.elements[k].value = s[k] || "";
+  lookedUpUen = (s.uen || "").toUpperCase();
+  for (const k of ["company_name", "company_address"]) f.elements[k].readOnly = !!s.existing_company;
+  if (s.existing_company) setCompanyFields("customer", s.company_name, s.company_address);
+  else $("#companyLookup").className = "msg hidden";
   $("button[type=submit]", f).textContent = "Save changes";
   $("#subCompany").classList.add("complete");
   $("#contractForm").querySelectorAll("input,button").forEach(i => i.disabled = false);
@@ -136,7 +179,9 @@ $("#companyForm").onsubmit = async e => {
       state.signup = await api("POST", "api/signups", body);
       sessionStorage.setItem("signupId", state.signup.id);
       showCompany(state.signup);
-      return msg("msg2", `UEN ${state.signup.uen} is valid and not blacklisted. Now upload the signed contract.`, "ok");
+      return msg("msg2", `UEN ${state.signup.uen} is valid and not blacklisted. ` +
+        (state.signup.existing_company ? "Company details retrieved from our records." : "Company details saved.") +
+        " Now upload the signed contract.", "ok");
     }
     const r = await api("PUT", `api/signups/${state.signup.id}/company`, body);
     state.signup = r;

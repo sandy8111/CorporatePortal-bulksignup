@@ -114,6 +114,27 @@
     <div class="actions"><button class="secondary" id="refreshInv">Refresh</button></div>
   </section>
 
+  <section class="card" id="ordersCard">
+    <h2>Orders &amp; carts</h2>
+    <div class="tabs" id="ordTabs">
+      <button type="button" data-s="" class="on">All <span></span></button>
+      <button type="button" data-s="DRAFT">In cart (not submitted) <span></span></button>
+      <button type="button" data-s="SUBMITTED">Submitted <span></span></button>
+      <button type="button" data-s="COMPLETED">Completed <span></span></button>
+      <button type="button" data-s="PARTIALLY_FAILED">Partly failed <span></span></button>
+      <button type="button" data-s="FAILED">Failed <span></span></button>
+      <input id="ordSearch" type="search" placeholder="Search UEN, company or AO email">
+    </div>
+    <div class="msg hidden" id="msgOrd"></div>
+    <div class="scroll"><table id="ordTable"><thead><tr><th>Created</th><th>Company</th><th>Account officer</th><th>SIM category</th><th>Lines</th><th>$/month</th><th>Status</th><th>Account no.</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div class="actions"><button type="button" class="secondary hidden" id="ordPrev">&larr; Previous</button><span class="hint" id="ordShowing" style="margin:0"></span><button type="button" class="secondary hidden" id="ordNext">Next &rarr;</button></div>
+    <div id="ordDetail" class="hidden" style="margin-top:16px">
+      <div class="inv-head"><h3 style="margin:0" id="ordTitle"></h3><button type="button" class="link" id="ordClose">Close</button></div>
+      <div class="hint" id="ordMeta" style="margin:4px 0 10px"></div>
+      <div class="scroll"><table id="ordLines"><thead><tr><th>#</th><th>Mobile number</th><th>SIM ICCID</th><th>Type</th><th>Plan</th><th>$/month</th><th>Inventory</th><th>Line status</th><th>Note</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
   <section class="card" id="listsCard">
     <h2>Inventory lists</h2>
     <h3 style="font-size:15px;margin:4px 0 8px">SIMs</h3>

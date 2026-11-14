@@ -553,3 +553,75 @@ def test_admin_sim_and_number_lists(client):
     for bad in ("sim-list?status=NOPE", "sim-list?sim_type=X", "sim-list?category=bad!", "number-list?limit=0"):
         assert client.get(f"/api/admin/inventory/{bad}", headers=ADMIN).status_code in (400, 422), bad
     assert client.get("/api/admin/inventory/sim-list").status_code == 401
+
+
+def test_admin_orders_list_carts_and_submitted(client, s3):
+    load_inventory(client)                      # 3 eSIM + 2 physical paired lines
+    draft = start(client)
+    client.post(f"/api/signups/{draft}/cart", json={"plan_code": "RAY-8", "sim_type": "ESIM", "quantity": 2})
+    done = start(client)
+    client.post(f"/api/signups/{done}/cart", json={"plan_code": "FLASH-20", "sim_type": "PHYSICAL", "quantity": 1})
+    assert client.post(f"/api/signups/{done}/submit").status_code == 200
+    empty = start(client)                       # no lines: not an order yet
+
+    d = client.get("/api/admin/orders", headers=ADMIN).json()
+    assert d["total"] == 2 and empty not in {o["id"] for o in d["orders"]}
+    assert d["counts"]["DRAFT"] == 1 and sum(d["counts"].values()) == 2
+    o = {x["id"]: x for x in d["orders"]}
+    assert (o[draft]["status"], o[draft]["line_count"], o[draft]["esim"], o[draft]["monthly_total"]) == ("DRAFT", 2, 2, "16.00")
+    assert o[draft]["account_number"] is None and o[draft]["ao_email"] == "meiling@acme.sg"
+    assert o[done]["status"] != "DRAFT" and o[done]["account_number"] and o[done]["physical"] == 1
+
+    only_drafts = client.get("/api/admin/orders?status=DRAFT", headers=ADMIN).json()
+    assert [x["id"] for x in only_drafts["orders"]] == [draft]
+    assert client.get(f"/api/admin/orders?q={UEN}", headers=ADMIN).json()["total"] == 2
+    assert client.get("/api/admin/orders?q=nobody", headers=ADMIN).json()["total"] == 0
+
+    det = client.get(f"/api/admin/orders/{draft}", headers=ADMIN).json()
+    assert len(det["lines"]) == 2 and all(l["inventory_status"] == "RESERVED" and l["line_status"] is None for l in det["lines"])
+    det = client.get(f"/api/admin/orders/{done}", headers=ADMIN).json()
+    assert det["lines"][0]["line_status"] in ("PENDING", "PROVISIONED", "FAILED") and det["lines"][0]["plan"] == "$20 Flash Plan"
+    assert client.get(f"/api/admin/orders/{empty}", headers=ADMIN).status_code == 404
+    assert client.get("/api/admin/orders").status_code == 401
+
+
+def test_existing_company_details_are_retrieved_not_reentered(client, s3):
+    from app.db import SessionLocal
+    from app.models import Company
+
+    def companies():
+        with SessionLocal() as db:
+            return [(x.uen, x.name, x.address) for x in db.query(Company).order_by(Company.uen).all()]
+
+    # unknown UEN: lookup says new; validating it needs a name and saves the company info right away
+    assert client.get(f"/api/companies/{UEN}").json() == {
+        "uen": UEN, "existing": False, "customer": False, "company_name": None, "company_address": None}
+    assert client.post("/api/signups", json={"uen": UEN}).status_code == 400
+    assert client.get("/api/companies/2026TC809K").status_code == 400
+    first = client.post("/api/signups", json={"uen": UEN, "company_name": "Acme Pte Lt", "company_address": "1 Raffles Pl"}).json()
+    assert companies() == [(UEN, "Acme Pte Lt", "1 Raffles Pl")]
+    assert client.get(f"/api/companies/{UEN.lower()}").json()["existing"] is True
+
+    # no order yet: the typo can still be fixed, and it updates the saved record (not a second one)
+    client.put(f"/api/signups/{first['id']}/company", json={"uen": UEN, "company_name": "Acme Pte Ltd", "company_address": "1 Raffles Place"})
+    assert companies() == [(UEN, "Acme Pte Ltd", "1 Raffles Place")]
+
+    # another sign-up for the same UEN retrieves the saved details without typing them
+    again = client.post("/api/signups", json={"uen": UEN}).json()
+    assert (again["company_name"], again["company_address"], again["existing_company"]) == ("Acme Pte Ltd", "1 Raffles Place", False)
+
+    # after the first submitted order the company is a customer: details are fixed to our records
+    load_inventory(client)
+    sid = start(client)
+    client.post(f"/api/signups/{sid}/cart", json={"plan_code": "RAY-8", "sim_type": "ESIM", "quantity": 1})
+    assert client.post(f"/api/signups/{sid}/submit").status_code == 200
+    assert client.get(f"/api/companies/{UEN}").json()["customer"] is True
+    r = client.post("/api/signups", json={"uen": UEN, "company_name": "Typed Differently", "company_address": "Elsewhere"}).json()
+    assert (r["company_name"], r["existing_company"]) == ("Acme Pte Ltd", True)
+    client.put(f"/api/signups/{again['id']}/company", json={"uen": UEN, "company_name": "Changed"})
+    assert companies() == [(UEN, "Acme Pte Ltd", "1 Raffles Place")]   # saved once, never overwritten
+
+    # blacklisted UEN is refused at lookup too
+    client.post("/api/admin/blacklist", headers=ADMIN, json={
+        "subject_type": "COMPANY", "id_type": "UEN", "id_value": "53312345C", "start_date": str(date.today())})
+    assert client.get("/api/companies/53312345C").status_code == 403

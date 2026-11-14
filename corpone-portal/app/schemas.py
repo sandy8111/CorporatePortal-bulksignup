@@ -8,7 +8,7 @@ from app import validators as v
 
 class SignupCreate(BaseModel):
     uen: str
-    company_name: str = Field(min_length=1, max_length=200)
+    company_name: str = Field(default="", max_length=200)   # required only for a new company
     company_address: str = Field(default="", max_length=500)
 
     @field_validator("uen")

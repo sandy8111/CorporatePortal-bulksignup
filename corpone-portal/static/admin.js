@@ -116,6 +116,76 @@ document.querySelectorAll("#pairTabs button").forEach(b => b.onclick = () => { p
 $("#pairPrev").onclick = () => { pair.offset = Math.max(0, pair.offset - PAGE); loadPairings(); };
 $("#pairNext").onclick = () => { pair.offset += PAGE; loadPairings(); };
 
+// ---- Orders & carts: sign-ups with lines in the cart (DRAFT) and submitted orders
+const ORD_PAGE = 50;
+const ord = { status: "", q: "", offset: 0, timer: null };
+const ORDER_STATUS = { DRAFT: ["In cart", "PENDING"], SUBMITTED: ["Submitted", "SUBMITTED"], COMPLETED: ["Completed", "COMPLETED"],
+                       PARTIALLY_FAILED: ["Partly failed", "PARTIALLY_FAILED"], FAILED: ["Failed", "FAILED"] };
+const LINE_STATUS = { PENDING: ["Pending", "PENDING"], PROVISIONED: ["Provisioned", "PROVISIONED"], FAILED: ["Failed", "FAILED"] };
+const money = v => "$" + Number(v).toFixed(2);
+function pillCell(map, st) {
+  const c = document.createElement("td");
+  if (!st) { c.textContent = "–"; return c; }
+  const [text, cls] = map[st] || [st, ""];
+  const p = document.createElement("span"); p.className = "pill " + cls; p.textContent = text; c.append(p);
+  return c;
+}
+
+async function loadOrders() {
+  const q = new URLSearchParams({ limit: ORD_PAGE, offset: ord.offset });
+  if (ord.status) q.set("status", ord.status);
+  if (ord.q) q.set("q", ord.q);
+  let d;
+  try { d = await api("GET", "api/admin/orders?" + q); } catch (err) { return msg("msgOrd", err.message); }
+  $("#msgOrd").className = "msg hidden";
+  const all = Object.values(d.counts).reduce((a, b) => a + b, 0);
+  document.querySelectorAll("#ordTabs button").forEach(b => {
+    b.classList.toggle("on", b.dataset.s === ord.status);
+    b.querySelector("span").textContent = b.dataset.s ? (d.counts[b.dataset.s] ?? 0) : all;
+  });
+  $("#ordTable tbody").replaceChildren(...(d.orders.length ? d.orders.map(o => {
+    const b = document.createElement("button");
+    b.className = "link"; b.textContent = "View"; b.onclick = () => openOrder(o.id);
+    const cell = document.createElement("td"); cell.append(b);
+    const mix = [o.esim ? o.esim + " eSIM" : "", o.physical ? o.physical + " physical" : ""].filter(Boolean).join(", ");
+    return row([when(o.created_at), o.company_name + " · " + o.uen, o.ao_email, o.category || "–",
+                o.line_count + " (" + mix + ")", money(o.monthly_total), pillCell(ORDER_STATUS, o.status),
+                mono(o.account_number), cell]);
+  }) : [row([Object.assign(td(ord.q || ord.status ? "No orders match." : "No lines have been added to a cart yet."), { colSpan: 9 })])]));
+  const end = ord.offset + d.orders.length;
+  $("#ordShowing").textContent = d.total ? (ord.offset + 1) + "–" + end + " of " + d.total : "";
+  $("#ordPrev").classList.toggle("hidden", ord.offset === 0);
+  $("#ordNext").classList.toggle("hidden", end >= d.total);
+}
+
+async function openOrder(id) {
+  let o;
+  try { o = await api("GET", "api/admin/orders/" + encodeURIComponent(id)); } catch (err) { return msg("msgOrd", err.message); }
+  $("#ordDetail").classList.remove("hidden");
+  $("#ordTitle").textContent = o.company_name + " · " + o.uen;
+  $("#ordMeta").textContent = [
+    ORDER_STATUS[o.status] ? ORDER_STATUS[o.status][0] : o.status,
+    o.account_number ? "account " + o.account_number : "not submitted yet",
+    "AO " + [o.ao_name, o.ao_email].filter(Boolean).join(" "),
+    o.merchant_code ? "merchant " + o.merchant_code : null,
+    "SIM category " + (o.category || "–"),
+    o.line_count + " line(s), " + money(o.monthly_total) + "/month",
+    "created " + when(o.created_at),
+    o.submitted_at ? "submitted " + when(o.submitted_at) : null,
+  ].filter(Boolean).join(" · ");
+  $("#ordLines tbody").replaceChildren(...o.lines.map((l, i) => {
+    const note = l.error || (l.sim_type === "ESIM" && l.line_status ? (l.esim_qr_sent ? "eSIM QR emailed" : "QR not sent yet") : "");
+    return row([i + 1, mono(l.msisdn), mono(l.iccid), simTypeText(l.sim_type), l.plan, money(l.monthly_price),
+                statusCell(l.inventory_status, "–"), pillCell(LINE_STATUS, l.line_status), note]);
+  }));
+  $("#ordDetail").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+document.querySelectorAll("#ordTabs button").forEach(b => b.onclick = () => { ord.status = b.dataset.s; ord.offset = 0; loadOrders(); });
+$("#ordSearch").oninput = e => { clearTimeout(ord.timer); ord.timer = setTimeout(() => { ord.q = e.target.value.trim(); ord.offset = 0; loadOrders(); }, 250); };
+$("#ordPrev").onclick = () => { ord.offset = Math.max(0, ord.offset - ORD_PAGE); loadOrders(); };
+$("#ordNext").onclick = () => { ord.offset += ORD_PAGE; loadOrders(); };
+$("#ordClose").onclick = () => $("#ordDetail").classList.add("hidden");
+
 // ---- Inventory lists: SIMs by category / type / status, numbers by category / status
 const LIST_PAGE = 100;
 const list = { kind: null, params: {}, offset: 0 };
@@ -370,5 +440,5 @@ async function loadLogs() {
 $("#refreshLogs").onclick = loadLogs;
 $("#resetBreakers").onclick = async () => { await api("POST", "api/admin/gateway/outbound/reset"); loadLogs(); };
 
-async function loadAll() { await Promise.all([loadInventory(), loadUploads(), loadCategories(), loadMerchants(), loadBlacklist(), loadScopes(), loadKeys(), loadLogs()]); }
+async function loadAll() { await Promise.all([loadInventory(), loadOrders(), loadUploads(), loadCategories(), loadMerchants(), loadBlacklist(), loadScopes(), loadKeys(), loadLogs()]); }
 if (token) loadAll().catch(e => msg("msgToken", e.message));

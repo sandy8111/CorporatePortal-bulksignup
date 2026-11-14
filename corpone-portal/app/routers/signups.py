@@ -9,13 +9,13 @@ from sqlalchemy.orm import Session
 from app.auth import current_ao
 from app.db import SessionLocal, get_db
 from app.models import (
-    AoSession, CartLine, CorporateAccount, IdType, InventoryStatus, Merchant, Plan, Signup, SignupStatus, Sim,
+    AoSession, CartLine, Company, CorporateAccount, IdType, InventoryStatus, Merchant, Plan, Signup, SignupStatus, Sim,
     SimType, SubjectType,
 )
 from app.schemas import AccountOfficerIn, CartAdd, CategoryChoice, SignupCreate
 from app.services import ai, categories, inventory, orders, storage
 from app.services.blacklist import active_entry
-from app.validators import ValidationError
+from app.validators import ValidationError, validate_uen
 
 router = APIRouter(prefix="/api", tags=["sign-up"])
 
@@ -36,6 +36,30 @@ def _draft(db: Session, signup_id: str, ao: AoSession) -> Signup:
     if s.status is not SignupStatus.DRAFT:
         _bad("Sign-up has already been submitted", 409)
     return s
+
+
+def _existing_company(db: Session, uen: str) -> Company | None:
+    return db.scalars(select(Company).where(Company.uen == uen)).first()
+
+
+def _is_customer(db: Session, c: Company | None) -> bool:
+    """A company with at least one submitted order: its name and address are fixed to our records."""
+    return c is not None and db.scalar(select(CorporateAccount.id).where(CorporateAccount.company_id == c.id)) is not None
+
+
+def _save_company(db: Session, body: SignupCreate) -> Company:
+    """Existing UEN: retrieve its details. New UEN: save the company info now. Details typed for a company
+    that has no submitted order yet update the record (so typos can be fixed); a customer's stay as recorded."""
+    c = _existing_company(db, body.uen)
+    if c is None:
+        if not body.company_name.strip():
+            _bad(f"UEN {body.uen} is a new company: enter its registered company name")
+        c = Company(uen=body.uen, name=body.company_name.strip(), address=body.company_address.strip())
+        db.add(c)
+        db.flush()
+    elif body.company_name.strip() and not _is_customer(db, c):
+        c.name, c.address = body.company_name.strip(), body.company_address.strip()
+    return c
 
 
 def _with_category(db: Session, s: Signup) -> str:
@@ -70,6 +94,7 @@ def _view(s: Signup, db: Session) -> dict:
     out = {
         "id": s.id, "status": s.status.value, "uen": s.uen, "company_name": s.company_name,
         "company_address": s.company_address, "category": s.category,
+        "existing_company": _is_customer(db, _existing_company(db, s.uen)),
         "contract_uploaded": bool(s.contract_key), "contract_filename": s.contract_filename,
         "account_officer": None if not s.ao_id_number else {
             "full_name": s.ao_full_name, "id_type": s.ao_id_type.value,
@@ -107,12 +132,28 @@ def validate_merchant(code: str, _: AoSession = Depends(current_ao), db: Session
     return {"code": m.code, "name": m.name}
 
 
+@router.get("/companies/{uen}")
+def lookup_company(uen: str, _: AoSession = Depends(current_ao), db: Session = Depends(get_db)):
+    """Check a UEN on the company step: format, blacklist, and whether the company is already on record.
+    existing: saved before (details returned so they aren't re-entered). customer: has a submitted order,
+    so its details are fixed to our records."""
+    try:
+        v = validate_uen(uen)
+    except ValidationError as exc:
+        _bad(str(exc))
+    if active_entry(db, SubjectType.COMPANY, IdType.UEN, v):
+        _bad(f"Company {v} is blacklisted and cannot sign up", 403)
+    c = _existing_company(db, v)
+    return {"uen": v, "existing": c is not None, "customer": _is_customer(db, c),
+            "company_name": c.name if c else None, "company_address": c.address if c else None}
+
+
 @router.post("/signups", status_code=201)
 def create_signup(body: SignupCreate, ao: AoSession = Depends(current_ao), db: Session = Depends(get_db)):
     if active_entry(db, SubjectType.COMPANY, IdType.UEN, body.uen):
         _bad(f"Company {body.uen} is blacklisted and cannot sign up", 403)
-    s = Signup(uen=body.uen, company_name=body.company_name.strip(),
-               company_address=body.company_address.strip(), owner_email=ao.email)
+    c = _save_company(db, body)
+    s = Signup(uen=c.uen, company_name=c.name, company_address=c.address, owner_email=ao.email)
     db.add(s)
     db.commit()
     return _view(s, db)
@@ -134,7 +175,8 @@ def update_company(signup_id: str, body: SignupCreate, ao: AoSession = Depends(c
         s.contract_key = s.contract_filename = s.contract_ai_review = None
         if not categories.is_allocated(db, body.uen, s.category):
             s.category = None
-    s.uen, s.company_name, s.company_address = body.uen, body.company_name.strip(), body.company_address.strip()
+    c = _save_company(db, body)
+    s.uen, s.company_name, s.company_address = c.uen, c.name, c.address
     db.commit()
     out = _view(s, db)
     out["uen_changed"] = uen_changed

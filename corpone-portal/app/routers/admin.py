@@ -13,10 +13,10 @@ from app.gateway import inbound
 from app.gateway.outbound import gateway as outbound_gateway
 from app.models import (
     ApiClient, BlacklistEntry, CategoryAllocation, CorporateAccount, GatewayAuditLog, InventoryStatus, Merchant,
-    OutboundCallLog, SimType,
+    OutboundCallLog, SignupStatus, SimType,
 )
 from app.schemas import BlacklistIn, CategoryAllocationIn, MerchantIn
-from app.services import categories, inventory, orders
+from app.services import admin_orders, categories, inventory, orders
 from app.validators import ValidationError, validate_category
 
 
@@ -86,6 +86,22 @@ def number_list(category: str | None = None, status: InventoryStatus | None = No
     except ValidationError as exc:
         raise HTTPException(400, str(exc))
     return inventory.number_inventory(db, cat, status, q, limit, offset)
+
+
+@router.get("/orders")
+def list_orders(status: SignupStatus | None = None, q: str | None = None,
+                limit: int = Query(50, ge=1, le=admin_orders.PAGE_CAP), offset: int = Query(0, ge=0),
+                db: Session = Depends(get_db)):
+    """Sign-ups with lines in their cart, newest first: DRAFT = still in the cart, others = submitted."""
+    return admin_orders.list_orders(db, status, q, limit, offset)
+
+
+@router.get("/orders/{signup_id}")
+def order_detail(signup_id: str, db: Session = Depends(get_db)):
+    d = admin_orders.order_detail(db, signup_id)
+    if d is None:
+        raise HTTPException(404, "Order not found")
+    return d
 
 
 @router.get("/uploads")

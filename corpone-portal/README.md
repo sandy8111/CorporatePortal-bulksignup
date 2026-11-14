@@ -57,7 +57,7 @@ so eSIM QR codes can only go to an inbox the AO has proved they control.
 
 | Step | What happens | Rules |
 |---|---|---|
-| 1. Company | Enter UEN, name, address; upload contract. The details stay editable after validation ("Save changes") | UEN format and check letter (ACRA business, local company, other entity); company must not be blacklisted; contract must be a PDF ≤ 10 MB, stored in S3 with SSE. Changing the UEN re-runs these checks, is refused while the cart has lines, and clears the contract (upload it again) and any SIM category not allocated to the new UEN. Changing only the name or address keeps everything |
+| 1. Company | Enter the UEN: leaving the field checks it (`GET /api/companies/{uen}`). An existing company's name and address are retrieved; a new company's are entered and saved when the UEN is validated. Upload contract. The details stay editable after validation ("Save changes") until the company's first order is submitted; after that they are fixed to our records | UEN format and check letter (ACRA business, local company, other entity); company must not be blacklisted; contract must be a PDF ≤ 10 MB, stored in S3 with SSE. Changing the UEN re-runs these checks, is refused while the cart has lines, and clears the contract (upload it again) and any SIM category not allocated to the new UEN. Changing only the name or address keeps everything |
 | 2. Account officer | Name, NRIC/FIN/passport, email, mobile; pick the delegated merchant code from a drop-down of active codes (managed in the back office) | NRIC/FIN check letter; AO must not be blacklisted; merchant code must exist and be active |
 | 3. Plan & lines | Choose the SIM category; pick $8 Ray / $20 Flash / $40 Glare; optionally upload SIMs; pick SIM type and quantity | The category must be allocated to this UEN (e.g. `ACME-SIM-001`) or open to all companies, and is required before SIM upload, inventory, cart and submit. It can't be changed while the cart has lines. Allocates already-paired SIM+number lines from that category, then reserves them in the cart |
 | 4. Review | Cart summary per plan, line list, monthly total; confirm and submit | Blacklist checked again at submit |
@@ -164,6 +164,12 @@ The portal compares the results with what the AO entered and shows them at the r
   its file name, time, who uploaded it and the accepted/paired/rejected counts. **View** shows
   every row: rejected rows with the reason, accepted rows with the SIM or number's current
   pairing and status.
+- **Orders & carts** (back office, `GET /api/admin/orders`, `GET /api/admin/orders/{id}`): every
+  sign-up with lines in its cart, newest first: "In cart" (draft, not submitted) and submitted
+  orders (submitted / completed / partly failed / failed), with company, AO, SIM category, line
+  mix, monthly total and account number. Filter by status or search UEN, company or AO email.
+  **View** lists each line with its number, SIM, plan, price, inventory status and provisioning
+  status.
 - **Inventory lists** (back office): **List SIMs** filters by SIM category, SIM type and SIM status
   (`GET /api/admin/inventory/sim-list`); **List numbers** filters by number status
   (`GET /api/admin/inventory/number-list`). Both show the paired SIM or number, a count per status
