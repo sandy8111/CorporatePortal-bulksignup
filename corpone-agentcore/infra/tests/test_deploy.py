@@ -24,8 +24,8 @@ def env(monkeypatch, tmp_path):
                  "MODEL_ID": "apac.anthropic.claude-sonnet-4-5", "PORTAL_API_KEY": KEY, "AWS_ACCOUNT_ID": "111122223333",
                  "AGENT_IMAGE_URI": "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/corpone-assistant:1"}.items():
         monkeypatch.setenv(k, v)
-    monkeypatch.setattr(deploy, "STATE", tmp_path / "state.json")
-    monkeypatch.setattr(destroy, "STATE", tmp_path / "state.json")
+    monkeypatch.setattr(deploy, "BUILD", tmp_path)
+    monkeypatch.setattr(destroy, "BUILD", tmp_path)
     monkeypatch.setattr(deploy.time, "sleep", lambda s: None)
     return tmp_path
 
@@ -85,7 +85,7 @@ def test_apply_runs_every_step_once_resumes_and_never_saves_the_key(env, monkeyp
         deploy.main(["--apply"])
     first = [op for _, op, _ in log if op.startswith(("create_", "put_"))]
     assert first[-1] == "create_memory" and "create_agent_runtime" not in first
-    saved = (env / "state.json").read_text()
+    saved = (env / "state-corpone-agentcore-ap-southeast-1.json").read_text()
     assert KEY not in saved and "openapi" not in json.loads(saved)["outputs"]
 
     log.clear()
@@ -93,7 +93,7 @@ def test_apply_runs_every_step_once_resumes_and_never_saves_the_key(env, monkeyp
     deploy.main(["--apply"])
     second = [op for _, op, _ in log if op.startswith(("create_", "put_"))]
     assert second[0] == "create_memory" and "create_gateway" not in second       # resumed, nothing repeated
-    state = json.loads((env / "state.json").read_text())
+    state = json.loads((env / "state-corpone-agentcore-ap-southeast-1.json").read_text())
     assert len(state["done"]) == len(steps(InfraConfig())) and KEY not in json.dumps(state)
 
 
@@ -110,7 +110,7 @@ def test_destroy_lists_then_deletes_in_reverse_order(env, monkeypatch, capsys):
     monkeypatch.setattr(boto3, "Session", lambda **k: FakeSession(log))
     deploy.main(["--apply"])
     destroy.main([])
-    assert "would delete" in capsys.readouterr().out and (env / "state.json").exists()
+    assert "would delete" in capsys.readouterr().out and (env / "state-corpone-agentcore-ap-southeast-1.json").exists()
     deleted = []
     monkeypatch.setattr(boto3, "client", lambda svc, region_name=None: FakeClient(svc, deleted))
     destroy.main(["--yes"])
@@ -118,7 +118,7 @@ def test_destroy_lists_then_deletes_in_reverse_order(env, monkeypatch, capsys):
     assert ops[0] == "delete_online_evaluation_config" and ops[-1] == "delete_user_pool"
     assert ops.index("delete_gateway_target") < ops.index("delete_gateway") < ops.index("delete_policy_engine")
     assert ops.count("delete_policy") == 4 and ops.count("delete_role") == 3
-    assert not (env / "state.json").exists() and (env / "state.destroyed.json").exists()
+    assert not (env / "state-corpone-agentcore-ap-southeast-1.json").exists() and (env / "state-corpone-agentcore-ap-southeast-1.destroyed.json").exists()
 
 
 def test_policy_mode_switch_request_is_valid(env, monkeypatch):
@@ -139,3 +139,13 @@ def test_policy_mode_switch_request_is_valid(env, monkeypatch):
     deploy.main(["--apply", "--policy-mode", "ENFORCE"])
     upd = next(p for _, op, p in log if op == "update_gateway")
     assert upd["policyEngineConfiguration"]["mode"] == "ENFORCE" and upd["authorizerType"] == "CUSTOM_JWT"
+
+
+def test_state_is_separate_per_project_and_region(env, monkeypatch):
+    log = []
+    monkeypatch.setattr(boto3, "Session", lambda **k: FakeSession(log))
+    deploy.main(["--apply"])
+    monkeypatch.setenv("PROJECT", "corpone-agentcore-test")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    assert deploy.load_state(InfraConfig())["done"] == []          # a test stack starts from nothing
+    assert sorted(p.name for p in env.glob("state-*.json")) == ["state-corpone-agentcore-ap-southeast-1.json"]

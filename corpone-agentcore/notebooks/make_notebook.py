@@ -1,9 +1,14 @@
-"""Build corpone-agentcore/notebooks/deploy_to_production.ipynb."""
+"""Build the deployment notebooks.
+
+  python notebooks/make_notebook.py notebooks/deploy_to_production.ipynb
+  python notebooks/make_notebook.py notebooks/deploy_test_us-east-1.ipynb --test
+"""
 import sys
 
 import nbformat as nbf
 
 OUT = sys.argv[1]
+TEST = "--test" in sys.argv[2:]
 cells = []
 md = lambda s: cells.append(nbf.v4.new_markdown_cell(s.strip()))
 code = lambda s: cells.append(nbf.v4.new_code_cell(s.strip()))
@@ -181,10 +186,10 @@ md("""
 
 Creates the 21 resources: Cognito, IAM roles, Identity credential provider, Policy engine, Gateway and target,
 4 Cedar policies, Memory, Runtime, online evaluation. Resumable: if a step fails, fix the cause and re-run the
-cell; finished steps are skipped (state in `infra/build/state.json`, no secrets).
+cell; finished steps are skipped (state in `infra/build/state-<project>-<region>.json`, no secrets).
 """)
 code("""
-state = deploy.load_state()
+state = deploy.load_state(cfg)
 if not CONFIRM_DEPLOY:
     print("CONFIRM_DEPLOY is False: nothing created.", f"{len(state['done'])} step(s) already in state.")
 else:
@@ -192,7 +197,7 @@ else:
     problems = cfg.problems(for_apply=True)
     assert not problems, problems
     deploy.apply(cfg, state)
-    state = deploy.load_state()
+    state = deploy.load_state(cfg)
 
 OUT = state["outputs"]
 DEPLOYED = "runtime_arn" in OUT and "gateway_url" in OUT
@@ -308,7 +313,7 @@ if not (DEPLOYED and GATE_OK):
 elif not CONFIRM_DEPLOY:
     print("CONFIRM_DEPLOY is False: would switch the Gateway policy mode to ENFORCE")
 else:
-    deploy.apply(cfg, deploy.load_state(), only_policy_mode="ENFORCE")
+    deploy.apply(cfg, deploy.load_state(cfg), only_policy_mode="ENFORCE")
     cfg.policy_mode = "ENFORCE"
     import time; time.sleep(15)
     report = prod.verify_policy(lambda t: prod.gateway_tools(OUT["gateway_url"], t),
@@ -362,6 +367,37 @@ if DEPLOYED and DELETE_TEST_USERS and CONFIRM_DEPLOY:
 else:
     print("test users kept (DELETE_TEST_USERS / CONFIRM_DEPLOY are False)")
 """)
+
+if TEST:
+    # ---------------------------------------------------------------- test variant: us-east-1, test project, tear-down
+    cells[0].source = ("> **TEST DEPLOYMENT** · us-east-1 · project `corpone-agentcore-test` · test data only. "
+                       "Production stays in ap-southeast-1 with `deploy_to_production.ipynb`.\n\n" + cells[0].source)
+    settings = cells[2]
+    swaps = [
+        ('REGION = "ap-southeast-1"          # Singapore: NRIC / PDPA data stays in-country',
+         'REGION = "us-east-1"               # TEST ONLY: AgentCore is blocked in ap-southeast-1 in the workshop account'),
+        ('os.environ["PROJECT"] = "corpone-agentcore"', 'os.environ["PROJECT"] = "corpone-agentcore-test"'),
+        ('# os.environ["PORTAL_GATEWAY_URL"] = "https://portal.corpone.sg/gateway"',
+         'IDE_DOMAIN = "<your-ide-domain>.cloudfront.net"     # <-- the address in your IDE browser tab\n'
+         'os.environ["PORTAL_GATEWAY_URL"] = f"https://{IDE_DOMAIN}/ports/8501/gateway"'),
+        ('# os.environ["MODEL_ID"] = "<Bedrock model or inference profile id available in the region>"',
+         'os.environ["MODEL_ID"] = "us.anthropic.claude-sonnet-5-5"'),
+        ('TEST_USERS = {"officer": "assistant-smoke-officer@corpone.sg", "ops": "assistant-smoke-ops@corpone.sg"}',
+         'TEST_USERS = {"officer": "assistant-test-officer@corpone.sg", "ops": "assistant-test-ops@corpone.sg"}\n'
+         'assert "<your-ide-domain>" not in os.environ["PORTAL_GATEWAY_URL"], "set IDE_DOMAIN to your IDE address first"'),
+    ]
+    for a, b in swaps:
+        assert a in settings.source, a
+        settings.source = settings.source.replace(a, b)
+    cells.append(nbf.v4.new_markdown_cell("## 12 · Tear down the test stack\n\nDeletes everything this test created "
+                                          "(state file `infra/build/state-corpone-agentcore-test-us-east-1.json`). "
+                                          "The ECR repository and log groups are kept."))
+    cells.append(nbf.v4.new_code_cell('''DESTROY_TEST_STACK = False     # set True when you are done testing
+import destroy
+if DESTROY_TEST_STACK and CONFIRM_DEPLOY:
+    destroy.main(["--yes"])
+else:
+    destroy.main([]) if deploy.state_path(cfg).exists() else print("nothing deployed for", cfg.project, cfg.region)'''))
 
 nb = nbf.v4.new_notebook(cells=cells)
 nb.metadata["kernelspec"] = {"name": "python3", "display_name": "Python 3", "language": "python"}

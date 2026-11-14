@@ -1,7 +1,7 @@
 """Deploy (or preview) the CorpOne AgentCore stack.
 
   python infra/deploy.py                      # dry run: list every AWS request, nothing is created
-  python infra/deploy.py --apply              # create what is missing; resumable (infra/build/state.json)
+  python infra/deploy.py --apply              # create what is missing; resumable (infra/build/state-<project>-<region>.json)
   python infra/deploy.py --apply --policy-mode ENFORCE   # switch the Gateway's Policy engine to enforcing
   python infra/deploy.py --apply --kill-switch on|off    # incident: deny / restore every tool call
 
@@ -19,7 +19,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from corpone_infra.config import InfraConfig  # noqa: E402
 from corpone_infra.plan import openapi_payload, placeholder_outputs, policy_files, render_policy, steps  # noqa: E402
 
-STATE = Path(__file__).resolve().parent / "build" / "state.json"
+BUILD = Path(__file__).resolve().parent / "build"
+
+
+def state_path(cfg) -> Path:
+    """One state file per project and region, so a test stack can never be mistaken for production."""
+    return BUILD / f"state-{cfg.dashed}-{cfg.region}.json"
 SECRET_OUTPUTS = {"portal_api_key", "openapi"}
 
 
@@ -42,14 +47,18 @@ def masked(params, secret_params):
     return shown
 
 
-def load_state():
-    return json.loads(STATE.read_text()) if STATE.exists() else {"outputs": {}, "done": []}
+def load_state(cfg):
+    p = state_path(cfg)
+    state = json.loads(p.read_text()) if p.exists() else {"outputs": {}, "done": []}
+    state["_path"] = str(p)
+    return state
 
 
 def save_state(state):
-    STATE.parent.mkdir(parents=True, exist_ok=True)
+    p = Path(state["_path"])
+    p.parent.mkdir(parents=True, exist_ok=True)
     clean = {"outputs": {k: v for k, v in state["outputs"].items() if k not in SECRET_OUTPUTS}, "done": state["done"]}
-    STATE.write_text(json.dumps(clean, indent=2))
+    p.write_text(json.dumps(clean, indent=2))
 
 
 def dry_run(cfg):
@@ -139,7 +148,7 @@ def apply(cfg, state, only_policy_mode=None):
             wait(client, s, out)
         state["done"].append(s.key)
         save_state(state)
-    print("\nDeployed. Outputs (no secrets) in", STATE)
+    print("\nDeployed. Outputs (no secrets) in", state["_path"])
     for k in ("gateway_url", "runtime_arn", "memory_id", "user_pool_id", "app_client_id", "online_eval_id"):
         print(f"  {k:16} {out.get(k)}")
     if cfg.policy_mode == "LOG_ONLY":
@@ -175,7 +184,7 @@ def main(argv=None):
         return dry_run(cfg)
     if problems:
         sys.exit("Cannot deploy:\n  - " + "\n  - ".join(problems))
-    state = load_state()
+    state = load_state(cfg)
     if a.kill_switch:
         return kill_switch(cfg, state, a.kill_switch == "on")
     apply(cfg, state, only_policy_mode=a.policy_mode)

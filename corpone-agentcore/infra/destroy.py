@@ -1,4 +1,4 @@
-"""Delete everything infra/deploy.py created, newest first, using infra/build/state.json.
+"""Delete everything infra/deploy.py created, newest first, using infra/build/state-<project>-<region>.json.
 
   python infra/destroy.py          # list what would be deleted
   python infra/destroy.py --yes    # delete it
@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from corpone_infra.config import InfraConfig  # noqa: E402
 
-STATE = Path(__file__).resolve().parent / "build" / "state.json"
+BUILD = Path(__file__).resolve().parent / "build"
 
 
 def actions(cfg, out):
@@ -52,9 +52,11 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--yes", action="store_true", help="really delete")
     a = ap.parse_args(argv)
-    if not STATE.exists():
-        sys.exit(f"Nothing to destroy: {STATE} not found")
     cfg = InfraConfig()
+    STATE = BUILD / f"state-{cfg.dashed}-{cfg.region}.json"
+    if not STATE.exists():
+        sys.exit(f"Nothing to destroy for project {cfg.project} in {cfg.region}: {STATE} not found")
+    print(f"Project {cfg.project} in {cfg.region} ({STATE.name})")
     out = json.loads(STATE.read_text())["outputs"]
     acts = actions(cfg, out)
     for svc, op, params in acts:
